@@ -5,7 +5,9 @@ import streamlit as st
 from kkloader.EmocreCharaData import EmocreCharaData  # noqa
 from kkloader.KoikatuCharaData import Coordinate, KoikatuCharaData  # noqa
 
-st.title("エモクリ→コイカツキャラクター変換ツール")
+title = "エモクリ→コイカツキャラクター変換ツール"
+st.set_page_config(page_title=title)
+st.title(title)
 
 file = st.file_uploader("エモーション・クリエイターズのキャラクター画像を選択")
 if file is not None:
