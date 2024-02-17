@@ -4,4 +4,4 @@
 
 ツールは↓からアクセスできます
 
-https://kk-snippets.streamlit.app/ec-to-kk
+https://kk-snippets.streamlit.app/
