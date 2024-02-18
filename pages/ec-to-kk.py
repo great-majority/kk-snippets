@@ -9,6 +9,10 @@ title = "エモクリ→コイカツキャラクター変換ツール"
 st.set_page_config(page_title=title)
 st.title(title)
 
+st.markdown("""エモーションクリエイターズで作成されたキャラクターを無印コイカツで読めるように変換するツールです。""")
+
+st.divider()
+
 file = st.file_uploader("エモーション・クリエイターズのキャラクター画像を選択")
 if file is not None:
 
