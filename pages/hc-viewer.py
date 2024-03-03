@@ -49,4 +49,4 @@ if file is not None:
 
     tabs = st.tabs(hc.blockdata)
     for b, t in zip(hc.blockdata, tabs):
-        t.write(hc[b].jsonalizable())
+        t.json(hc[b].jsonalizable(), expanded=False)
