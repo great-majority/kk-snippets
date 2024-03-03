@@ -36,7 +36,7 @@ if file is not None:
         st.error("ファイルの読み込みに失敗しました。未対応のファイルです。", icon="🚨")
         st.stop()
 
-    st.success("正常にデータを読み込めました。(↓に結果が表示されるまでちょっと時間がかかります)", icon="✅")
+    st.success("正常にデータを読み込めました。", icon="✅")
     st.download_button("データをダウンロード", bytes(hc), file_name="converted.png")
 
     col1, col2 = st.columns(2)
