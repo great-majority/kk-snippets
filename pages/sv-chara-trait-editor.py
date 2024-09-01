@@ -510,7 +510,14 @@ if file is not None:
                 required=True,
             )
 
-    column_configs = categorical_column_configs | trait_column_configs
+    name_column_configs = {
+        "名前": st.column_config.TextColumn(
+            "名前",
+            disabled=True,
+        )
+    }
+
+    column_configs = categorical_column_configs | trait_column_configs | name_column_configs
     df_modified = st.data_editor(df_params, hide_index=True, column_config=column_configs)
 
     # 変更の反映
