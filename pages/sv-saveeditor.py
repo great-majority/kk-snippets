@@ -285,7 +285,7 @@ st.title(title)
 st.divider()
 
 description = """
-[サマバケ！すくらんぶる](https://www.illgames.jp/product/svs/)のセーブデータを編集するツールです。
+[サマバケ！すくらんぶる](https://www.illgames.jp/product/svs/)のセーブデータのうち、キャラクターの特性を編集するツールです。
 """
 st.markdown(description)
 
