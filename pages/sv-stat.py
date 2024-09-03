@@ -352,7 +352,7 @@ if file is not None:
 
         sexual_commands = {
             "totalH": "totalH:総エッチ回数",
-            "caress": "caress:愛撫好意回数",
+            "caress": "caress:愛撫行為回数",
             "service": "service:奉仕行為回数",
             "insertion": "insertion:挿入行為回数",
             "anal": "anal:アナル行為回数",
