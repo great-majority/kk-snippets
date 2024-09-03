@@ -394,7 +394,12 @@ if file is not None:
 
         # グラフの作成
         G = nx.from_pandas_adjacency(df_relations, create_using=nx.DiGraph())
-        net = Network(cdn_resources="in_line", height="600px", width="100%")
+
+        if selected_command_graph == "finish":
+            net = Network(cdn_resources="in_line", height="600px", width="100%", directed=True)
+        else:
+            net = Network(cdn_resources="in_line", height="600px", width="100%")
+
         net.from_nx(G)
         for node in net.nodes:
             if gender[node["label"]] == 0:
