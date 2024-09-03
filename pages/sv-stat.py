@@ -261,7 +261,7 @@ if file is not None:
         st.write("このデータにはキャラクターが一人しか登録されていないようです。")
         st.stop()
 
-    tab_command, tab_sexual, tab_graph = st.tabs(["コマンドログ", "性的関係ログ", "性的関係グラフ"])
+    tab_graph, tab_sexual, tab_command = st.tabs(["性的関係グラフ", "性的関係ログ", "コマンドログ"])
 
     with tab_command:
         commands = {
@@ -376,6 +376,7 @@ if file is not None:
         graph_option = st.selectbox(
             "グラフを表示する行動を選択:",
             [v for v in sorted(sexual_commands.values())],
+            index=6,
         )
         selected_command_graph = graph_option.split(":")[0]
 
