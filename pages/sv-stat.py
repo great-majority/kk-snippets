@@ -226,6 +226,38 @@ class SVSSaveData:
 
         return df
 
+    # 二者の感情を表す値の行列を取得
+    def generate_emotion_matrix(self, emotion=0):
+        names = {x["charasGameParam"]["Index"]: x["charasGameParam"]["onesPropertys"][0]["name"] for x in self.chara_details}
+
+        assert emotion in [0, 1, 2, 3]
+
+        rows = {}
+        for c in self.chara_details:
+            from_index = c["charasGameParam"]["Index"]
+            row = {}
+            table = c["charasGameParam"]["sensitivity"]["tableFavorabiliry"]
+
+            for d in self.chara_details:
+                to_index = d["charasGameParam"]["Index"]
+
+                if to_index in table:
+                    matrix = table[to_index]["longSensitivityCounts"]
+                else:
+                    matrix = [0, 0, 0, 0]
+
+                row[f"{to_index}:{names[to_index]}"] = matrix
+
+            rows[f"{from_index}:{names[from_index]}"] = row
+
+        df = pd.DataFrame.from_dict(rows).T
+        sorted_columns = sorted(df.columns, key=lambda x: int(x.split(':')[0]))
+        df = df[sorted_columns]
+        sorted_index = sorted(df.index, key=lambda x: int(x.split(':')[0]))
+        df = df.loc[sorted_index]
+
+        return df.map(lambda x: x[emotion])
+
 
 ############################################
 # Streamlitのロジック部分
@@ -261,7 +293,7 @@ if file is not None:
         st.write("このデータにはキャラクターが一人しか登録されていないようです。")
         st.stop()
 
-    tab_graph, tab_sexual, tab_command = st.tabs(["性的関係グラフ", "性的関係ログ", "コマンドログ"])
+    tab_graph, tab_sexual, tab_emotion_graph, tab_emotion, tab_command = st.tabs(["性的関係グラフ", "性的関係ログ", "感情グラフ", "感情値", "コマンドログ"])
 
     with tab_command:
         commands = {
@@ -367,13 +399,13 @@ if file is not None:
             "hide": "hide:隠れてエッチした回数",
         }
 
-        option = st.selectbox(
+        sexual_command_option = st.selectbox(
             "表示する行動を選択:",
             [v for v in sorted(sexual_commands.values())],
         )
-        selected_command = option.split(":")[0]
+        selected_sexual_command = sexual_command_option.split(":")[0]
 
-        df_relations = svs.generate_sexual_memory_matrix(command=selected_command)
+        df_relations = svs.generate_sexual_memory_matrix(command=selected_sexual_command)
         df_relations = df_relations.replace(0, np.nan)
 
         st.dataframe(df_relations)
@@ -393,14 +425,14 @@ if file is not None:
         for c, cd in zip(svs.charas, svs.chara_details):
             gender[f"{cd['charasGameParam']['Index']}:{cd['charasGameParam']['onesPropertys'][0]['name']}"] = c["Parameter"]["sex"]
 
-        df_relations = svs.generate_sexual_memory_matrix(command=selected_command_graph)
+        df_sexual_relations = svs.generate_sexual_memory_matrix(command=selected_command_graph)
 
-        sorted_columns = sorted(df_relations.columns, key=lambda x: int(x.split(':')[0]))
-        df_relations = df_relations[sorted_columns]
-        df_relations = df_relations.fillna(0)
+        sorted_columns = sorted(df_sexual_relations.columns, key=lambda x: int(x.split(':')[0]))
+        df_sexual_relations = df_sexual_relations[sorted_columns]
+        df_sexual_relations = df_sexual_relations.fillna(0)
 
         # グラフの作成
-        G = nx.from_pandas_adjacency(df_relations, create_using=nx.DiGraph())
+        G = nx.from_pandas_adjacency(df_sexual_relations, create_using=nx.DiGraph())
 
         if selected_command_graph == "finish":
             net = Network(cdn_resources="in_line", height="600px", width="100%", directed=True)
@@ -424,4 +456,66 @@ if file is not None:
             }
         """)
         html = net.generate_html()
+        components.html(html, height=610)
+
+    with tab_emotion:
+
+        emotions = {
+            0: "0:愛情値",
+            1: "1:友情値",
+            2: "2:無関心",
+            3: "3:敵意",
+        }
+
+        emotion_option = st.selectbox(
+            "表示する感情を選択:",
+            [v for v in sorted(emotions.values())],
+        )
+        selected_emotion = int(emotion_option.split(":")[0])
+
+        df_emotion = svs.generate_emotion_matrix(emotion=selected_emotion)
+
+        st.dataframe(df_emotion)
+
+    with tab_emotion_graph:
+
+        emotion_graph_option = st.selectbox(
+            "グラフを表示する感情を選択:",
+            [v for v in sorted(emotions.values())],
+            index=0,
+        )
+        selected_emotion_graph = int(emotion_graph_option.split(":")[0])
+
+        st.caption("グラフが見えない場合は、表示位置がずれている可能性があります。その場合は右下の - + の上のボタンを押してみてください。")
+        st.caption("このグラフでは`0`から`30`まである感情値を4段階で表しています。値が大きいほど線は太くなります。")
+
+        gender = {}
+        for c, cd in zip(svs.charas, svs.chara_details):
+            gender[f"{cd['charasGameParam']['Index']}:{cd['charasGameParam']['onesPropertys'][0]['name']}"] = c["Parameter"]["sex"]
+
+        df_emotion_graph = svs.generate_emotion_matrix(emotion=selected_emotion_graph)
+        df_emotion_graph = df_emotion_graph // 7.5
+
+        # グラフの作成
+        G_emotion = nx.from_pandas_adjacency(df_emotion_graph, create_using=nx.DiGraph())
+
+        net_emotion = Network(cdn_resources="in_line", height="600px", width="100%", directed=True)
+
+        net_emotion.from_nx(G_emotion)
+        for node in net_emotion.nodes:
+            if gender[node["label"]] == 0:
+                node['color'] = "#4f55ff"
+            else:
+                node['color'] = "#ff8080"
+        for edge in net_emotion.edges:
+            edge['color'] = "#4B4B4B"
+
+        net_emotion.set_options("""
+            var options = {
+                "interaction": {
+                    "navigationButtons": true
+                }
+            }
+        """)
+        html = net_emotion.generate_html()
         components.html(html, height=610)
