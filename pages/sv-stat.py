@@ -84,7 +84,10 @@ class SVSSaveData:
         # プレイヤーのキャラデータが入っているオフセット位置
         svs.player_offset = cls._unsigned_int64(data_stream)
 
-        svs.names = {x["charasGameParam"]["Index"]: x["charasGameParam"]["onesPropertys"][0]["name"] for x in svs.chara_details}
+        svs.names = {}
+        for c, d in zip(svs.charas, svs.chara_details):
+            svs.names[d["charasGameParam"]["Index"]] = f"{c['Parameter']['lastname']} {c['Parameter']['firstname']}"
+
         svs.index_to_array = {x["charasGameParam"]["Index"]: i for i, x in enumerate(svs.chara_details)}
 
         return svs
@@ -163,8 +166,6 @@ class SVSSaveData:
 
     # 二者間の交流のログを隣接行列として取得する
     def generate_memory_matrix(self, command: int = 0, active: bool = True, decision: str = "yes"):
-
-        names = {x["charasGameParam"]["Index"]: x["charasGameParam"]["onesPropertys"][0]["name"] for x in self.chara_details}
         interract = "activeCommand" if active else "passiveCommand"
 
         assert interract in ["activeCommand", "passiveCommand"]
@@ -186,9 +187,9 @@ class SVSSaveData:
                 else:
                     value = None
 
-                row[f"{to_index}:{names[to_index]}"] = value
+                row[f"{to_index}:{self.names[to_index]}"] = value
 
-            rows[f"{from_index}:{names[from_index]}"] = row
+            rows[f"{from_index}:{self.names[from_index]}"] = row
 
         df = pd.DataFrame.from_dict(rows).T
         sorted_columns = sorted(df.columns, key=lambda x: int(x.split(':')[0]))
@@ -200,7 +201,6 @@ class SVSSaveData:
 
     # 二者間の性的な関係のログの隣接行列
     def generate_sexual_memory_matrix(self, command):
-        names = {x["charasGameParam"]["Index"]: x["charasGameParam"]["onesPropertys"][0]["name"] for x in self.chara_details}
 
         rows = {}
         for c in self.chara_details:
@@ -214,9 +214,9 @@ class SVSSaveData:
                 if from_index == to_index:
                     continue
                 value = table[to_index]["saveInfo"][command]
-                row[f"{to_index}:{names[to_index]}"] = value
+                row[f"{to_index}:{self.names[to_index]}"] = value
 
-            rows[f"{from_index}:{names[from_index]}"] = row
+            rows[f"{from_index}:{self.names[from_index]}"] = row
 
         df = pd.DataFrame.from_dict(rows).T
         sorted_columns = sorted(df.columns, key=lambda x: int(x.split(':')[0]))
@@ -228,7 +228,6 @@ class SVSSaveData:
 
     # 二者の感情を表す値の行列を取得
     def generate_emotion_matrix(self, emotion=0):
-        names = {x["charasGameParam"]["Index"]: x["charasGameParam"]["onesPropertys"][0]["name"] for x in self.chara_details}
 
         assert emotion in [0, 1, 2, 3]
 
@@ -246,9 +245,9 @@ class SVSSaveData:
                 else:
                     matrix = [0, 0, 0, 0]
 
-                row[f"{to_index}:{names[to_index]}"] = matrix
+                row[f"{to_index}:{self.names[to_index]}"] = matrix
 
-            rows[f"{from_index}:{names[from_index]}"] = row
+            rows[f"{from_index}:{self.names[from_index]}"] = row
 
         df = pd.DataFrame.from_dict(rows).T
         sorted_columns = sorted(df.columns, key=lambda x: int(x.split(':')[0]))
@@ -423,7 +422,9 @@ if file is not None:
 
         gender = {}
         for c, cd in zip(svs.charas, svs.chara_details):
-            gender[f"{cd['charasGameParam']['Index']}:{cd['charasGameParam']['onesPropertys'][0]['name']}"] = c["Parameter"]["sex"]
+            index = cd['charasGameParam']['Index']
+            name = f"{c['Parameter']['lastname']} {c['Parameter']['firstname']}"
+            gender[f"{index}:{name}"] = c["Parameter"]["sex"]
 
         df_sexual_relations = svs.generate_sexual_memory_matrix(command=selected_command_graph)
 
@@ -491,7 +492,9 @@ if file is not None:
 
         gender = {}
         for c, cd in zip(svs.charas, svs.chara_details):
-            gender[f"{cd['charasGameParam']['Index']}:{cd['charasGameParam']['onesPropertys'][0]['name']}"] = c["Parameter"]["sex"]
+            index = cd['charasGameParam']['Index']
+            name = f"{c['Parameter']['lastname']} {c['Parameter']['firstname']}"
+            gender[f"{index}:{name}"] = c["Parameter"]["sex"]
 
         df_emotion_graph = svs.generate_emotion_matrix(emotion=selected_emotion_graph)
         df_emotion_graph = df_emotion_graph // 7.5
