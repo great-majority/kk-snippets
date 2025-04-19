@@ -59,6 +59,8 @@ def hc_to_sv(hc: HoneycomeCharaData) -> SummerVacationCharaData:
     common_blocks = ["Custom", "Coordinate", "Parameter", "Status", "Graphic", "About"]
     sv_blocks = ["GameParameter_SV", "GameInfo_SV"]
     svc.blockdata = common_blocks + sv_blocks
+    svc.serialized_lstinfo_order = svc.blockdata
+    svc.original_lstinfo_order = svc.blockdata
 
     # まずは全部そのままコピーする
     for block in common_blocks:
@@ -136,6 +138,8 @@ def sv_to_hc(svc: SummerVacationCharaData) -> HoneycomeCharaData:
     common_blocks = ["Custom", "Coordinate", "Parameter", "Status", "Graphic", "About"]
     hc_blocks = ["GameParameter_HC", "GameInfo_HC"]
     hc.blockdata = common_blocks + hc_blocks
+    hc.serialized_lstinfo_order = hc.blockdata
+    hc.original_lstinfo_order = hc.blockdata
 
     # まずは全部そのままコピーする
     for block in common_blocks:
