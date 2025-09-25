@@ -7,6 +7,7 @@ from kkloader import (
     HoneycomeCharaData as hcd,
     KoikatuCharaData as kcd,
     EmocreCharaData as ecd,
+    AicomiCharaData as acd,
 )
 from kkloader.KoikatuCharaData import BlockData
 from kkloader.funcs import get_png, load_length, load_type
@@ -58,6 +59,7 @@ illusion/ILLGAMESのキャラ画像に含まれている色々なデータを一
 - ILLGAMES
     - ハニカム
     - サマバケすくらんぶる
+    - アイコミ
 """
 st.markdown(description)
 
@@ -111,13 +113,20 @@ if file is not None:
             st.image(io.BytesIO(chara.image), caption="カード画像")
             name = chara["Parameter"]["fullname"]
 
-        case "【SVChara】":
-            chara = svcd.load(file.getvalue())
+        case "【SVChara】" | "【ACChara】":
+
+            if header == "【SVChara】":
+                chara = svcd.load(file.getvalue())
+                icon_image = io.BytesIO(chara["GameParameter_SV"]["imageData"])
+            elif header == "【ACChara】":
+                chara = acd.load(file.getvalue())
+                icon_image = io.BytesIO(chara["GameParameter_AC"]["imageData"])
+            
             col1, col2 = st.columns(2)
             with col1:
                 st.image(io.BytesIO(chara.image), caption="カード画像")
             with col2:
-                st.image(io.BytesIO(chara["GameParameter_SV"]["imageData"]), caption="アイコン画像")
+                st.image(icon_image, caption="アイコン画像")
             name = " ".join([chara["Parameter"]["lastname"], chara["Parameter"]["firstname"]])
 
         case "【HCChara】" | "【HCPChara】":
