@@ -117,16 +117,17 @@ if file is not None:
 
             if header == "【SVChara】":
                 chara = svcd.load(file.getvalue())
-                icon_image = io.BytesIO(chara["GameParameter_SV"]["imageData"])
+                icon_image = chara["GameParameter_SV"]["imageData"]
             elif header == "【ACChara】":
                 chara = acd.load(file.getvalue())
-                icon_image = io.BytesIO(chara["GameParameter_AC"]["imageData"])
+                icon_image = chara["GameParameter_AC"]["imageData"]
             
             col1, col2 = st.columns(2)
             with col1:
                 st.image(io.BytesIO(chara.image), caption="カード画像")
             with col2:
-                st.image(icon_image, caption="アイコン画像")
+                if icon_image is not None:
+                    st.image(io.BytesIO(icon_image), caption="アイコン画像")
             name = " ".join([chara["Parameter"]["lastname"], chara["Parameter"]["firstname"]])
 
         case "【HCChara】" | "【HCPChara】":
