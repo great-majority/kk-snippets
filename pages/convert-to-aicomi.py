@@ -168,6 +168,12 @@ def convert_svs_to_ac(svc: SummerVacationCharaData) -> AicomiCharaData:
     # 公式通りに浴衣にしてもいいが、ここではとりあえず3番目のコピペにする
     ac.Coordinate.data.append(copy.deepcopy(ac.Coordinate.data[-1]))
 
+    # 私服と役職服の順序を入れ替える これでサマすくの私服がそのままアイコミの私服になる
+    casual_coordinate = copy.deepcopy(ac.Coordinate.data[0])
+    workwear_coordinate = copy.deepcopy(ac.Coordinate.data[1])
+    ac.Coordinate.data[0] = workwear_coordinate
+    ac.Coordinate.data[1] = casual_coordinate
+
     # アクセサリーのパーツ数(20->40対応)
     for i in range(4):
         for _ in range(20):
@@ -193,8 +199,8 @@ description = """
 
 - キャラクターのコーディネートを保ったまま変換できます。
   - サマすくとアイコミでのコスチューム対応は以下の通りです:
-    - 私服 → 制服
-    - 役職服 → 私服
+    - 私服 → 私服
+    - 役職服 → 制服
     - 水着 → 水着
     - (なし) → 水着(3番目のコスチュームのコピー)
 - 内部のサムネイル画像の縮尺がサマすくとアイコミで異なるため、ゲームに登場させる前に、キャラメイクでサムネイル更新&上書き保存しておくことを推奨します。
