@@ -16,6 +16,11 @@ https://kk-snippets.streamlit.app/ec-to-kk
 
 エモーション・クリエイターズで作成したキャラクターを、無印コイカツで使用できる形式に変換するツールです。顔の特徴やコーディネートを適切に変換し、変換済みのキャラクターファイルをダウンロードできます。
 
+### サマすく→アイコミコンバータ
+https://kk-snippets.streamlit.app/convert-to-aicomi
+
+サマすくのデータをコーディネート情報を保ったままアイコミのデータへ変換するツールです。
+
 ### サマすくキャラ特性エディター
 https://kk-snippets.streamlit.app/sv-chara-trait-editor
 
