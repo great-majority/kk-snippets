@@ -56,10 +56,9 @@ DEFAULT_ACCCESORY = {
     "fkInfo": {"use": False, "bones": []},
 }
 
-DEFAULT_GAMAPARAMETER_AC = {
+DEFAULT_GAMEPARAMETER_AC = {
     "version": "0.0.0",
     "imageData": None,
-    "faceImageData": None,
     "clubActivities": 3,
     "individuality": [
         False,
@@ -133,7 +132,7 @@ def convert_svs_to_ac(svc: SummerVacationCharaData) -> AicomiCharaData:
 
     ac.image = svc.image
     ac.face_image = b""
-    ac.product_no = 200
+    ac.product_no = 100
     ac.header = "【ACChara】".encode("utf-8")
     ac.version = "0.0.0".encode("utf-8")
 
@@ -151,9 +150,11 @@ def convert_svs_to_ac(svc: SummerVacationCharaData) -> AicomiCharaData:
     ac.GameParameter_AC = StubBlockData("GameParameter_AC", "0.0.0")
     ac.GameInfo_AC = StubBlockData("GameInfo_AC", "0.0.0")
 
-    ac.GameParameter_AC.data = DEFAULT_GAMAPARAMETER_AC
+    ac.GameParameter_AC.data = DEFAULT_GAMEPARAMETER_AC
     # Noneにしてもいいかもしれないが、とりあえずSVSのをコピーする
     ac.GameParameter_AC.data["imageData"] = svc.GameParameter_SV.data["imageData"]
+
+    ac.GameInfo_AC.data = {"version": "0.0.0"}
 
     # SVSとACで違う部分を修正する
 
