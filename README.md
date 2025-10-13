@@ -18,6 +18,11 @@ https://kk-snippets.streamlit.app/ec-to-kk
 
 A tool for converting characters created in Emotion Creators to a format compatible with the original Koikatsu. It properly converts facial features and coordinates, allowing you to download the converted character file.
 
+### Summer Vacation Scramble → Aicomi Converter
+https://kk-snippets.streamlit.app/convert-to-aicomi
+
+A tool for converting Summer Vacation Scramble character data to Aicomi format while preserving coordinates.
+
 ### Summer Vacation Scramble Character Trait Editor
 https://kk-snippets.streamlit.app/sv-chara-trait-editor
 
