@@ -191,6 +191,101 @@ def convert_svs_to_ac(svc: SummerVacationCharaData) -> AicomiCharaData:
     return ac
 
 
+def convert_ac_to_svs(ac: AicomiCharaData) -> SummerVacationCharaData:
+    assert isinstance(ac, AicomiCharaData)
+
+    svc = SummerVacationCharaData()
+    svc.image = ac.image
+    svc.face_image = b""
+    svc.product_no = 100
+    svc.header = "【SVChara】".encode("utf-8")
+    svc.version = "0.0.0".encode("utf-8")
+
+    common_blocks = ["Custom", "Coordinate", "Parameter", "Status", "Graphic", "About"]
+    sv_blocks = ["GameParameter_SV", "GameInfo_SV"]
+    svc.blockdata = common_blocks + sv_blocks
+    svc.serialized_lstinfo_order = svc.blockdata
+    svc.original_lstinfo_order = svc.blockdata
+
+    # まずは全部そのままコピーする
+    for block in common_blocks:
+        setattr(svc, block, getattr(ac, block))
+
+    # SVにしかないデータを初期化する
+    svc.GameParameter_SV = StubBlockData("GameParameter_SV", "0.0.0")
+    svc.GameInfo_SV = StubBlockData("GameInfo_SV", "0.0.0")
+
+    # この初期値はサマすく本体のコンバータに基づく
+    svc.GameParameter_SV.data = {
+        "imageData": ac.GameParameter_AC.data["imageData"],
+        "job": 0,
+        "sexualTarget": 0,
+        "lvChastity": 0,
+        "lvSociability": 0,
+        "lvTalk": 0,
+        "lvStudy": 0,
+        "lvLiving": 0,
+        "lvPhysical": 0,
+        "lvDefeat": 0,
+        "belongings": [
+            0,
+            0
+        ],
+        "isVirgin": True,
+        "isAnalVirgin": True,
+        "isMaleVirgin": True,
+        "isMaleAnalVirgin": True,
+        "individuality": {
+            "answer": [
+                -1,
+                -1
+            ]
+            },
+            "preferenceH": {
+            "answer": [
+                -1,
+                -1
+            ]
+        }
+    }
+    svc.GameInfo_SV.data = {"version": "0.0.0"}
+
+    # ACとSVSで違う部分を修正する
+
+    # 私服と役職服の順序を元に戻す（ACの私服→SVSの役職服、ACの制服→SVSの私服）
+    casual_coordinate = copy.deepcopy(svc.Coordinate.data[0])
+    workwear_coordinate = copy.deepcopy(svc.Coordinate.data[1])
+    svc.Coordinate.data[0] = workwear_coordinate
+    svc.Coordinate.data[1] = casual_coordinate
+
+    # 4番目のコスチューム（祭り衣装）を削除（SVSは3つのコスチュームのみ）
+    if len(svc.Coordinate.data) > 3:
+        svc.Coordinate.data = svc.Coordinate.data[:3]
+
+    # アクセサリーのパーツ数(40->20対応)
+    for i in range(3):
+        if len(svc.Coordinate[i]["accessory"]["parts"]) > 20:
+            svc.Coordinate[i]["accessory"]["parts"] = svc.Coordinate[i]["accessory"]["parts"][:20]
+
+    # ACにしかないアクセサリーのフィールドを削除
+    for i in range(3):
+        for n in range(len(svc.Coordinate[i]["accessory"]["parts"])):
+            if "hideCategoryClothes" in svc.Coordinate[i]["accessory"]["parts"][n]:
+                del svc.Coordinate[i]["accessory"]["parts"][n]["hideCategoryClothes"]
+            if "visibleTimings" in svc.Coordinate[i]["accessory"]["parts"][n]:
+                del svc.Coordinate[i]["accessory"]["parts"][n]["visibleTimings"]
+
+    # アクセサリー表示フラグ(40->20対応)
+    if len(svc.Status.data["showAccessory"]) > 20:
+        svc.Status.data["showAccessory"] = svc.Status.data["showAccessory"][:20]
+
+    # ニックネーム（ACにしかないフィールド）を削除
+    if "nickname" in svc.Parameter.data:
+        del svc.Parameter.data["nickname"]
+
+    return svc
+
+
 title = "サマすく→アイコミキャラクターコンバータ"
 st.set_page_config(page_title=title)
 st.title(title)
