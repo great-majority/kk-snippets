@@ -6,6 +6,99 @@ from kkloader import AicomiCharaData, HoneycomeCharaData, SummerVacationCharaDat
 from kkloader.funcs import get_png, load_length, load_type
 from kkloader.KoikatuCharaData import BlockData
 
+# ========================================
+# i18n対応: 多言語辞書
+# ========================================
+
+TRANSLATIONS = {
+    "ja": {
+        "title": "ILLGAMESキャラクターコンバータ",
+        "description": """
+ハニカム↔サマすく↔アイコミでキャラクターデータを相互変換するツールです。キャラデータ読み込み後、
+- ハニカムのキャラデータはサマすくへ
+- サマすくのキャラデータはハニカムとアイコミへ
+- アイコミのキャラデータはサマすくへ
+
+変換を行わうことができます。
+
+**⚠️注意事項**: バグなどあるかもしれませんので、変換前のデータのバックアップはとっておきましょう!
+""",
+        "expander_title": "各ゲームごとのキャラデータの違い",
+        "expander_content": """
+- 各ゲーム間で互換性のない部分は、そのまま削除したり、無なデータでの埋め合わせを行います。
+- ハニカム、アイコミのポートレート画像はサマすくの立ち絵画像で代用、逆にサマすくからのコンバートでは立ち絵画像を代用します。見た目が気になる場合はキャラメイクから再保存してください。
+
+|                            | ハニカム | サマすく | アイコミ |
+| -------------------------- | -------- | -------- | -------- |
+| 着衣補正                   | ❌️     | ⭕️     | ⭕️     |
+| コーディネート数           | 3        | 3        | 4        |
+| アクセサリー切り替えフラグ | ❌️     | ❌️     | ⭕️     |
+| ニックネーム               | ❌️     | ❌️     | ⭕️     |
+| アクセサリー数             | 20       | 20       | 40       |
+| ポートレート画像           | ⭕️     | ❌️     | ⭕️     |
+| 立ち絵画像                 | ❌️     | ⭕️     | ❌️     |
+| ハニカム固有データ         | ⭕️     | ❌️     | ❌️     |
+| サマすく固有データ         | ❌️     | ⭕️     | ❌️     |
+| アイコミ固有データ         | ❌️     | ❌️     | ⭕️     |
+""",
+        "file_uploader": "サマすく/ハニカム/アイコミのキャラ画像を選択",
+        "error_load": "ファイルの読み込みに失敗しました。未対応のファイルです。",
+        "success_load": "正常にデータを読み込めました。",
+        "error_unsupported": "このヘッダのファイルには対応していません:",
+        "file_is_hc": "このファイルは **ハニカム** のキャラデータです。",
+        "file_is_sv": "このファイルは **サマすく** のキャラデータです。",
+        "file_is_ac": "このファイルは **アイコミ** のキャラデータです。",
+        "download_sv": "サマすくのキャラとしてダウンロード",
+        "download_hc": "ハニカムのキャラとしてダウンロード",
+        "download_ac": "アイコミのキャラとしてダウンロード",
+        "language_selector": "言語 / Language",
+    },
+    "en": {
+        "title": "ILLGAMES Character Converter",
+        "description": """
+This tool allows you to convert character data between Honey Come, Summer Vacation Scramble, and Aicomi. After loading character data:
+- Honey Come character data can be converted to Summer Vacation Scramble
+- Summer Vacation Scramble character data can be converted to Honey Come and Aicomi
+- Aicomi character data can be converted to Summer Vacation Scramble
+
+**⚠️Caution**: There may be bugs, so please back up your data before conversion!
+""",
+        "expander_title": "Differences in character data between games",
+        "expander_content": """
+- Incompatible parts between games will be deleted or filled with empty data.
+- Portrait images for Honey Come and Aicomi will be substituted with standing images from Summer Vacation Scramble, and vice versa. If you are concerned about the appearance, please re-save from character creation.
+
+|                                | Honey Come | Summer Vacation | Aicomi |
+| ------------------------------ | ---------- | --------------- | ------ |
+| Clothing adjustment            | ❌️        | ⭕️            | ⭕️   |
+| Number of coordinates          | 3          | 3               | 4      |
+| Accessory toggle flag          | ❌️        | ❌️            | ⭕️   |
+| Nickname                       | ❌️        | ❌️            | ⭕️   |
+| Number of accessories          | 20         | 20              | 40     |
+| Portrait image                 | ⭕️        | ❌️            | ⭕️   |
+| Standing image                 | ❌️        | ⭕️            | ❌️   |
+| Honey Come specific data       | ⭕️        | ❌️            | ❌️   |
+| Summer Vacation specific data  | ❌️        | ⭕️            | ❌️   |
+| Aicomi specific data           | ❌️        | ❌️            | ⭕️   |
+""",
+        "file_uploader": "Select a character image (Summer Vacation / Honey Come / Aicomi)",
+        "error_load": "Failed to load file. Unsupported file format.",
+        "success_load": "Data loaded successfully.",
+        "error_unsupported": "This header file is not supported:",
+        "file_is_hc": "This file is a **Honey Come** character.",
+        "file_is_sv": "This file is a **Summer Vacation Scramble** character.",
+        "file_is_ac": "This file is an **Aicomi** character.",
+        "download_sv": "Download as Summer Vacation character",
+        "download_hc": "Download as Honey Come character",
+        "download_ac": "Download as Aicomi character",
+        "language_selector": "Language / 言語",
+    }
+}
+
+def get_text(key, lang="ja"):
+    """指定した言語のテキストを取得"""
+    return TRANSLATIONS.get(lang, TRANSLATIONS["ja"]).get(key, key)
+
 
 # ヘッダ部分だけ読み込むクラス
 class KoikatuCharaHeader:
@@ -484,85 +577,88 @@ def ac_to_sv(ac: AicomiCharaData) -> SummerVacationCharaData:
     return svc
 
 
-title = "ILLGAMESキャラクターコンバータ"
+# ========================================
+# Streamlit UI
+# ========================================
+
+# ページ設定とタイトル
+title = get_text("title", "ja")
 st.set_page_config(page_title=title)
-st.title(title)
 
-description = """
-ハニカム↔サマすく↔アイコミでキャラクターデータを相互変換するツールです。キャラデータ読み込み後、
-- ハニカムのキャラデータはサマすくへ
-- サマすくのキャラデータはハニカムとアイコミへ
-- アイコミのキャラデータはサマすくへ
+# サイドバーに言語選択を配置
+with st.sidebar:
+    lang = st.selectbox(
+        "Language / 言語",
+        options=["ja", "en"],
+        format_func=lambda x: "日本語" if x == "ja" else "English",
+        index=0
+    )
 
-変換を行わうことができます。
+st.title(get_text("title", lang))
 
-**⚠️注意事項**: バグなどあるかもしれませんので、変換前のデータのバックアップはとっておきましょう!
-"""
-st.markdown(description)
+# 説明文
+st.markdown(get_text("description", lang))
 
-with st.expander("各ゲームごとのキャラデータの違い"):
-    description = """
-    - 各ゲーム間で互換性のない部分は、そのまま削除したり、無なデータでの埋め合わせを行います。
-    - ハニカム、アイコミのポートレート画像はサマすくの立ち絵画像で代用、逆にサマすくからのコンバートでは立ち絵画像を代用します。見た目が気になる場合はキャラメイクから再保存してください。
-
-    |                            | ハニカム | サマすく | アイコミ | 
-    | -------------------------- | -------- | -------- | -------- | 
-    | 着衣補正                   | ❌️     | ⭕️     | ⭕️     | 
-    | コーディネート数           | 3        | 3        | 4        | 
-    | アクセサリー切り替えフラグ | ❌️     | ❌️     | ⭕️     | 
-    | ニックネーム               | ❌️     | ❌️     | ⭕️     | 
-    | アクセサリー数             | 20       | 20       | 40       | 
-    | ポートレート画像           | ⭕️     | ❌️     | ⭕️     | 
-    | 立ち絵画像                 | ❌️     | ⭕️     | ❌️     | 
-    | ハニカム固有データ         | ⭕️     | ❌️     | ❌️     | 
-    | サマすく固有データ         | ❌️     | ⭕️     | ❌️     | 
-    | アイコミ固有データ         | ❌️     | ❌️     | ⭕️     |     
-    """
-    st.markdown(description)
+# 各ゲームごとの違いを展開可能なセクションに
+with st.expander(get_text("expander_title", lang)):
+    st.markdown(get_text("expander_content", lang))
 
 st.divider()
 
-file = st.file_uploader("サマすく/ハニカム/アイコミのキャラ画像を選択")
+# ファイルアップローダー
+file = st.file_uploader(get_text("file_uploader", lang))
 if file is not None:
 
     try:
         kch = KoikatuCharaHeader.load(file.getvalue())
     except Exception as e:
-        st.error("ファイルの読み込みに失敗しました。未対応のファイルです。", icon="🚨")
+        st.error(get_text("error_load", lang), icon="🚨")
         # st.write(e)
         st.stop()
 
-    st.success("正常にデータを読み込めました。", icon="✅")
+    st.success(get_text("success_load", lang), icon="✅")
 
     header = kch.header.decode("utf-8")
 
     if header not in ["【HCChara】", "【SVChara】", "【ACChara】"]:
-        st.error(f"このヘッダのファイルには対応していません: {header}", icon="🚨")
+        st.error(f"{get_text('error_unsupported', lang)} {header}", icon="🚨")
         st.stop()
 
     if header == "【HCChara】":
-        st.write("このファイルは **ハニカム** のキャラデータです。")
+        st.write(get_text("file_is_hc", lang))
         hc = HoneycomeCharaData.load(file.getvalue())
         name = " ".join([hc['Parameter']['lastname'], hc['Parameter']['firstname']])
         svc = hc_to_sv(hc)
-        st.download_button("サマすくのキャラとしてダウンロード", bytes(svc), file_name=f"sv_converted_{name}.png")
+        st.download_button(
+            get_text("download_sv", lang),
+            bytes(svc),
+            file_name=f"sv_converted_{name}.png"
+        )
 
     elif header == "【SVChara】":
-        st.write("このファイルは **サマすく** のキャラデータです。")
+        st.write(get_text("file_is_sv", lang))
         svc = SummerVacationCharaData.load(file.getvalue())
         name = " ".join([svc['Parameter']['lastname'], svc['Parameter']['firstname']])
         hc = sv_to_hc(svc)
         ac = sv_to_ac(svc)
-        st.download_button("ハニカムのキャラとしてダウンロード", bytes(hc), file_name=f"hc_converted_{name}.png")
-        st.download_button("アイコミのキャラとしてダウンロード", bytes(ac), file_name=f"ac_converted_{name}.png")
+        st.download_button(
+            get_text("download_hc", lang),
+            bytes(hc),
+            file_name=f"hc_converted_{name}.png"
+        )
+        st.download_button(
+            get_text("download_ac", lang),
+            bytes(ac),
+            file_name=f"ac_converted_{name}.png"
+        )
 
     elif header == "【ACChara】":
-        st.write("このファイルは **アイコミ** のキャラデータです。")
+        st.write(get_text("file_is_ac", lang))
         ac = AicomiCharaData.load(file.getvalue())
         name = " ".join([ac["Parameter"]["lastname"], ac["Parameter"]["firstname"]])
         svc = ac_to_sv(ac)
         st.download_button(
-            "サマすくのキャラとしてダウンロード",
+            get_text("download_sv", lang),
             bytes(svc),
             file_name=f"sv_converted_{name}.png",
         )
