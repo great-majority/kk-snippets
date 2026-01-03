@@ -77,34 +77,6 @@ def compute_layout(text_input, per_char_resolution, text_height, plane_size_fact
     }
 
 
-def render_settings_metrics(
-    layout, text_height, plane_size_factor, color_hex, edge_color_hex
-):
-    st.subheader("📊 現在の設定")
-    info_col1, info_col2, info_col3 = st.columns(3)
-
-    with info_col1:
-        st.metric("文字の縦幅", f"{text_height:.2f}")
-        st.metric("1pixelの大きさ", f"{layout['pixel_size']:.3f}")
-        st.metric("平面の大きさ", f"{plane_size_factor:.2f}")
-
-    with info_col2:
-        st.metric("一文字あたり細かさ", f"{layout['grid_height']}")
-        st.metric("グリッドサイズ", f"{layout['grid_width']}×{layout['grid_height']}")
-        st.metric(
-            "全体サイズ",
-            f"{(layout['grid_width'] - 1) * layout['spacing']:.2f}"
-            f"×{(layout['grid_height'] - 1) * layout['spacing']:.2f}",
-        )
-
-    with info_col3:
-        st.metric("色", color_hex)
-        st.metric("縁の色", edge_color_hex)
-        st.metric(
-            "推定平面数", f"〜{int(layout['grid_width'] * layout['grid_height'] * 0.3)}"
-        )
-
-
 def build_preview_pixels(pixels, text_length):
     blocks = np.split(pixels, max(1, text_length), axis=1)
     return np.concatenate(list(reversed(blocks)), axis=1)
@@ -120,21 +92,27 @@ def render_preview(original_img, preview_pixels, grid_width, grid_height):
 
     with preview_col2:
         st.markdown(f"**ピクセルデータ ({grid_width}×{grid_height})**")
-        st.image(Image.fromarray(preview_pixels), width="stretch")
+        preview_img = Image.fromarray(preview_pixels)
+        scale = max(1, min(12, int(512 / max(1, preview_img.width))))
+        preview_img = preview_img.resize(
+            (preview_img.width * scale, preview_img.height * scale),
+            Image.Resampling.NEAREST,
+        )
+        st.image(preview_img, width="content")
 
 
 def render_scene_info(scene, plane_count, raw_plane_count):
     st.subheader("📝 シーン情報")
-    st.markdown(f"""
-    - **タイトル**: {scene.title}
-    - **バージョン**: {scene.version}
-    - **平面数**: {plane_count}
-    - **推定ファイルサイズ**: 約 {len(bytes(scene)) / 1024:.1f} KB
-    """)
-    if raw_plane_count is not None:
-        delta = raw_plane_count - plane_count
-        delta_text = f"-{delta}" if delta >= 0 else f"+{abs(delta)}"
-        st.metric("平面削減", delta_text, f"{plane_count}/{raw_plane_count}")
+    info_col1, info_col2 = st.columns(2)
+    with info_col1:
+        st.metric("平面数", f"{plane_count}")
+    with info_col2:
+        if raw_plane_count is not None:
+            delta = raw_plane_count - plane_count
+            delta_text = f"-{delta}" if delta >= 0 else f"+{abs(delta)}"
+            st.metric("平面削減", delta_text, f"{plane_count}/{raw_plane_count}")
+        else:
+            st.metric("平面削減", "-", "-")
 
 
 def build_scene_filename(text_input):
@@ -1116,7 +1094,7 @@ try:
                 max_value=200,
                 value=50,
                 step=5,
-                help="この値を大きくするほど文字が綺麗になる一方、シーンが重くなります",
+                help="文字のピクセルの細かさ。この値を大きくするほど文字が綺麗になる一方、シーンが重くなります",
             )
             font_size = FONT_SIZE
 
@@ -1142,16 +1120,9 @@ try:
             help="1.0が現在の大きさ。小さくすると文字がスカスカになります。ドット感のある文字の描写に使います。",
         )
 
-    st.markdown("---")
-
     layout = compute_layout(
         text_input, per_char_resolution, text_height, plane_size_factor
     )
-    render_settings_metrics(
-        layout, text_height, plane_size_factor, color_hex, edge_color_hex
-    )
-
-    st.markdown("---")
 
     # 生成ボタン
     generate_button = st.button("🚀 シーンを生成", type="primary", width="stretch")
