@@ -35,3 +35,8 @@ https://kk-snippets.streamlit.app/sv-hc-converter
 https://kk-snippets.streamlit.app/sv-stat
 
 サマバケ！すくらんぶるのセーブデータから、キャラクター間の関係性や行動履歴を分析・表示するツールです。キャラクター同士の行動マトリックス、感情値、関係性をネットワークグラフで可視化して、ゲーム内での人間関係を詳しく分析できます。
+
+### デジクラカリグラファー
+https://kk-snippets.streamlit.app/digital-craft-calligrapher
+
+好きなテキストを平面を並べたデジタルクラフトのシーンファイルとして出力するツールです。フォント選択やサイズ調整もできます。
