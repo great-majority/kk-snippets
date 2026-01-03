@@ -37,3 +37,8 @@ A tool for bidirectional character conversion between Summer Vacation Scramble a
 https://kk-snippets.streamlit.app/sv-stat
 
 A tool for analyzing and displaying relationship data and action history between characters from Summer Vacation Scramble save data. It visualizes character interaction matrices, emotion values, and relationships in network graphs to provide detailed analysis of in-game interpersonal relationships.
+
+### Digital Craft Calligrapher
+https://kk-snippets.streamlit.app/digital-craft-calligrapher
+
+A tool that outputs your text as a digital craft scene file made of planes. It also supports font selection and size adjustments.
