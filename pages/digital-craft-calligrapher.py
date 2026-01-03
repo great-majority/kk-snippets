@@ -14,6 +14,7 @@ import numpy as np
 SPACING_RATIO = 0.2
 FONT_SIZE = 200
 FONT_DIR = Path(__file__).parent / "digital-craft-calligrapher-data"
+CHAR_CANVAS_PADDING = 5
 
 def list_available_fonts():
     return sorted(FONT_DIR.glob("*.ttf"))
@@ -33,6 +34,106 @@ def format_font_option(font_path):
     if note:
         return f"{font_path.name} ({note})"
     return font_path.name
+
+
+def compute_canvas_height(text, font, padding):
+    max_char_height = 0
+    dummy_img = Image.new("L", (1, 1))
+    dummy_draw = ImageDraw.Draw(dummy_img)
+    for char in text:
+        bbox = dummy_draw.textbbox((0, 0), char, font=font)
+        max_char_height = max(max_char_height, bbox[3] - bbox[1])
+    return max_char_height + padding * 2
+
+
+def select_font_option(available_fonts, default_font_name):
+    if not available_fonts:
+        st.warning("フォントが見つかりません")
+        return None
+    default_font = FONT_DIR / default_font_name
+    default_index = available_fonts.index(default_font) if default_font in available_fonts else 0
+    return st.selectbox(
+        "🔤 フォント",
+        available_fonts,
+        format_func=format_font_option,
+        index=default_index,
+    )
+
+
+def compute_layout(text_input, per_char_resolution, text_height, plane_size_factor):
+    grid_width = max(1, per_char_resolution * max(1, len(text_input)))
+    grid_height = per_char_resolution
+    pixel_size = text_height / per_char_resolution
+    text_scale = (pixel_size / SPACING_RATIO) * plane_size_factor
+    spacing = pixel_size
+    return {
+        "grid_width": grid_width,
+        "grid_height": grid_height,
+        "pixel_size": pixel_size,
+        "text_scale": text_scale,
+        "spacing": spacing,
+    }
+
+
+def render_settings_metrics(layout, text_height, plane_size_factor, color_hex, edge_color_hex):
+    st.subheader("📊 現在の設定")
+    info_col1, info_col2, info_col3 = st.columns(3)
+
+    with info_col1:
+        st.metric("文字の縦幅", f"{text_height:.2f}")
+        st.metric("1pixelの大きさ", f"{layout['pixel_size']:.3f}")
+        st.metric("平面の大きさ", f"{plane_size_factor:.2f}")
+
+    with info_col2:
+        st.metric("一文字あたり細かさ", f"{layout['grid_height']}")
+        st.metric("グリッドサイズ", f"{layout['grid_width']}×{layout['grid_height']}")
+        st.metric(
+            "全体サイズ",
+            f"{(layout['grid_width'] - 1) * layout['spacing']:.2f}"
+            f"×{(layout['grid_height'] - 1) * layout['spacing']:.2f}",
+        )
+
+    with info_col3:
+        st.metric("色", color_hex)
+        st.metric("縁の色", edge_color_hex)
+        st.metric("推定平面数", f"〜{int(layout['grid_width'] * layout['grid_height'] * 0.3)}")
+
+
+def build_preview_pixels(pixels, text_length):
+    blocks = np.split(pixels, max(1, text_length), axis=1)
+    return np.concatenate(list(reversed(blocks)), axis=1)
+
+
+def render_preview(original_img, preview_pixels, grid_width, grid_height):
+    st.subheader("🖼️ プレビュー")
+    preview_col1, preview_col2 = st.columns(2)
+
+    with preview_col1:
+        st.markdown("**元のテキスト画像**")
+        st.image(original_img, width="stretch")
+
+    with preview_col2:
+        st.markdown(f"**ピクセルデータ ({grid_width}×{grid_height})**")
+        st.image(Image.fromarray(preview_pixels), width="stretch")
+
+
+def render_scene_info(scene, plane_count, raw_plane_count):
+    st.subheader("📝 シーン情報")
+    st.markdown(f"""
+    - **タイトル**: {scene.title}
+    - **バージョン**: {scene.version}
+    - **平面数**: {plane_count}
+    - **推定ファイルサイズ**: 約 {len(bytes(scene)) / 1024:.1f} KB
+    """)
+    if raw_plane_count is not None:
+        delta = raw_plane_count - plane_count
+        delta_text = f"-{delta}" if delta >= 0 else f"+{abs(delta)}"
+        st.metric("平面削減", delta_text, f"{plane_count}/{raw_plane_count}")
+
+
+def build_scene_filename(text_input):
+    safe_text = "".join(c if c.isalnum() else "_" for c in text_input)
+    return f"digitalcraft_scene_text_{safe_text}.png"
 
 TEMPLATE_SCENE_META = {'version': '1.0.0',
  'data_id_1': 'deadbeef-dead-beef-dead-beefdeadbeef',
@@ -545,18 +646,15 @@ st.set_page_config(
 )
 
 st.title("✨ Digital Craft Calligrapher")
-st.markdown("テキストをデジタルクラフト内で平面を並べて再現します")
+st.markdown("テキストをデジタルクラフトのシーン内で平面を並べて再現します。ダウンロードしたシーンをインポートして使えます。")
 
 
 # セッション状態の初期化
-if 'template_loaded' not in st.session_state:
-    st.session_state.template_loaded = False
+if 'template_scene' not in st.session_state:
     st.session_state.template_scene = None
     st.session_state.plane_template = None
     st.session_state.folder_key = None
     st.session_state.folder_obj = None
-    st.session_state.last_plane_count = None
-    st.session_state.last_raw_plane_count = None
 
 
 # テンプレートの読み込み
@@ -728,6 +826,17 @@ def pixels_to_planes(
 
     effective_threshold = 1 if antialias else 128
 
+    def flush_run(run_start, run_end, run_color, row_index):
+        run_length = run_end - run_start + 1
+        x_first = start_x + (width - 1 - run_start) * spacing
+        x_last = start_x + (width - 1 - run_end) * spacing
+        x = (x_first + x_last) / 2
+        z = start_z + row_index * spacing
+        y = 0.0
+        plane = create_plane(plane_template, x, y, z, run_color, scale)
+        plane["data"]["scale"]["x"] = scale * run_length
+        planes.append(plane)
+
     for row in range(height):
         run_start = None
         run_color = None
@@ -744,49 +853,25 @@ def pixels_to_planes(
                 elif merge_horizontal and colors_close(shaded_color, run_color, merge_color_threshold):
                     run_end = col
                 else:
-                    run_length = run_end - run_start + 1
-                    x_first = start_x + (width - 1 - run_start) * spacing
-                    x_last = start_x + (width - 1 - run_end) * spacing
-                    x = (x_first + x_last) / 2
-                    z = start_z + row * spacing
-                    y = 0.0
-                    plane = create_plane(plane_template, x, y, z, run_color, scale)
-                    plane["data"]["scale"]["x"] = scale * run_length
-                    planes.append(plane)
+                    flush_run(run_start, run_end, run_color, row)
                     run_start = col
                     run_end = col
                     run_color = shaded_color
             else:
                 if run_start is not None:
-                    run_length = run_end - run_start + 1
-                    x_first = start_x + (width - 1 - run_start) * spacing
-                    x_last = start_x + (width - 1 - run_end) * spacing
-                    x = (x_first + x_last) / 2
-                    z = start_z + row * spacing
-                    y = 0.0
-                    plane = create_plane(plane_template, x, y, z, run_color, scale)
-                    plane["data"]["scale"]["x"] = scale * run_length
-                    planes.append(plane)
+                    flush_run(run_start, run_end, run_color, row)
                     run_start = None
                     run_end = None
                     run_color = None
 
         if run_start is not None:
-            run_length = run_end - run_start + 1
-            x_first = start_x + (width - 1 - run_start) * spacing
-            x_last = start_x + (width - 1 - run_end) * spacing
-            x = (x_first + x_last) / 2
-            z = start_z + row * spacing
-            y = 0.0
-            plane = create_plane(plane_template, x, y, z, run_color, scale)
-            plane["data"]["scale"]["x"] = scale * run_length
-            planes.append(plane)
+            flush_run(run_start, run_end, run_color, row)
 
     return planes
 
 
 def generate_text_scene(text, template_scene, plane_template, folder_key, folder_obj,
-                       grid_width=80, grid_height=60, font_size=100,
+                       grid_height=60, font_size=100,
                        text_scale=0.25, spacing=None, threshold=1, color=None, edge_color=None,
                        antialias=True, font_path=None, merge_horizontal=False,
                        merge_color_threshold=0.05):
@@ -799,14 +884,7 @@ def generate_text_scene(text, template_scene, plane_template, folder_key, folder
     # 1. テキストを画像に変換（プレビュー用）
     font = load_font(font_size, font_path)
     img = text_to_image(text, font_size=font_size, font=font)
-    padding = 5
-    max_char_height = 0
-    dummy_img = Image.new("L", (1, 1))
-    dummy_draw = ImageDraw.Draw(dummy_img)
-    for char in text:
-        bbox = dummy_draw.textbbox((0, 0), char, font=font)
-        max_char_height = max(max_char_height, bbox[3] - bbox[1])
-    canvas_height = max_char_height + padding * 2
+    canvas_height = compute_canvas_height(text, font, CHAR_CANVAS_PADDING)
 
     # 2. 1文字ごとに平面を生成
     per_char_resolution = grid_height
@@ -911,18 +989,7 @@ try:
     # テキスト入力
     text_input = st.text_input("📝 テキスト", value="愛", max_chars=50)
     available_fonts = list_available_fonts()
-    font_options = available_fonts
-    default_font = FONT_DIR / "DelaGothicOne-Regular.ttf"
-    if default_font in available_fonts:
-        default_index = font_options.index(default_font)
-    else:
-        default_index = 0
-    selected_font = st.selectbox(
-        "🔤 フォント",
-        font_options,
-        format_func=format_font_option,
-        index=default_index,
-    )
+    selected_font = select_font_option(available_fonts, "DelaGothicOne-Regular.ttf")
 
     st.markdown("---")
 
@@ -953,7 +1020,6 @@ try:
             font_size = FONT_SIZE
 
         with col2:
-            grid_height = per_char_resolution
             threshold = 1
 
         # 色モード
@@ -970,29 +1036,8 @@ try:
 
     st.markdown("---")
 
-    grid_width = max(1, per_char_resolution * max(1, len(text_input)))
-    pixel_size = text_height / per_char_resolution
-    text_scale = (pixel_size / SPACING_RATIO) * plane_size_factor
-    spacing = pixel_size
-
-    # 設定情報表示
-    st.subheader("📊 現在の設定")
-    info_col1, info_col2, info_col3 = st.columns(3)
-
-    with info_col1:
-        st.metric("文字の縦幅", f"{text_height:.2f}")
-        st.metric("1pixelの大きさ", f"{pixel_size:.3f}")
-        st.metric("平面の大きさ", f"{plane_size_factor:.2f}")
-
-    with info_col2:
-        st.metric("一文字あたり細かさ", f"{per_char_resolution}")
-        st.metric("グリッドサイズ", f"{grid_width}×{grid_height}")
-        st.metric("全体サイズ", f"{(grid_width-1)*spacing:.2f}×{(grid_height-1)*spacing:.2f}")
-
-    with info_col3:
-        st.metric("色", color_hex)
-        st.metric("縁の色", edge_color_hex)
-        st.metric("推定平面数", f"〜{int(grid_width*grid_height*0.3)}")
+    layout = compute_layout(text_input, per_char_resolution, text_height, plane_size_factor)
+    render_settings_metrics(layout, text_height, plane_size_factor, color_hex, edge_color_hex)
 
     st.markdown("---")
 
@@ -1014,11 +1059,10 @@ try:
                         plane_template=plane_template,
                         folder_key=folder_key,
                         folder_obj=folder_obj,
-                        grid_width=grid_width,
-                        grid_height=grid_height,
+                        grid_height=layout["grid_height"],
                         font_size=font_size,
-                        text_scale=text_scale,
-                        spacing=spacing,
+                        text_scale=layout["text_scale"],
+                        spacing=layout["spacing"],
                         threshold=threshold,
                         color=color,
                         edge_color=edge_color,
@@ -1027,43 +1071,20 @@ try:
                         merge_horizontal=merge_horizontal,
                         merge_color_threshold=merge_color_threshold,
                     )
-                    st.session_state.last_plane_count = plane_count
-                    st.session_state.last_raw_plane_count = raw_plane_count
 
                     st.success(f"✅ 生成完了！ ({plane_count} 個の平面)")
 
-                    # プレビュー表示
-                    st.subheader("🖼️ プレビュー")
-
-                    blocks = np.split(pixels, max(1, len(text_input)), axis=1)
-                    preview_pixels = np.concatenate(list(reversed(blocks)), axis=1)
-
-                    preview_col1, preview_col2 = st.columns(2)
-
-                    with preview_col1:
-                        st.markdown("**元のテキスト画像**")
-                        st.image(original_img, width="stretch")
-
-                    with preview_col2:
-                        st.markdown(f"**ピクセルデータ ({grid_width}×{grid_height})**")
-                        st.image(Image.fromarray(preview_pixels), width="stretch")
-
-                    # シーン情報
-                    st.subheader("📝 シーン情報")
-                    st.markdown(f"""
-                    - **タイトル**: {scene.title}
-                    - **バージョン**: {scene.version}
-                    - **平面数**: {plane_count}
-                    - **推定ファイルサイズ**: 約 {len(bytes(scene)) / 1024:.1f} KB
-                    """)
-                    if raw_plane_count is not None:
-                        delta = raw_plane_count - plane_count
-                        delta_text = f"-{delta}" if delta >= 0 else f"+{abs(delta)}"
-                        st.metric("平面削減", delta_text, f"{plane_count}/{raw_plane_count}")
+                    preview_pixels = build_preview_pixels(pixels, len(text_input))
+                    render_preview(
+                        original_img,
+                        preview_pixels,
+                        layout["grid_width"],
+                        layout["grid_height"],
+                    )
+                    render_scene_info(scene, plane_count, raw_plane_count)
 
                     # ダウンロードボタン
-                    safe_text = "".join(c if c.isalnum() else "_" for c in text_input)
-                    filename = f"digitalcraft_scene_text_{safe_text}.png"
+                    filename = build_scene_filename(text_input)
 
                     preview_buf = io.BytesIO()
                     Image.fromarray(preview_pixels).save(preview_buf, format="PNG")
