@@ -1,11 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-Honeycome Scene Text Generator - Streamlit App
-
-このアプリケーションは、テキストを3D空間にピクセルアートとして描画する
-Honeycomeシーンを生成します。
-"""
 
 import streamlit as st
 import io
@@ -34,6 +26,8 @@ def format_font_option(font_path):
         "YujiSyuku-Regular.ttf": "毛筆風",
         "MPLUSRounded1c-Regular.ttf": "やわらかい",
         "KleeOne-SemiBold.ttf": "手書き風",
+        "DelaGothicOne-Regular.ttf": "極太",
+        "YuseiMagic-Regular.ttf": "ポップ",
     }
     note = impressions.get(font_path.name)
     if note:
@@ -561,6 +555,8 @@ if 'template_loaded' not in st.session_state:
     st.session_state.plane_template = None
     st.session_state.folder_key = None
     st.session_state.folder_obj = None
+    st.session_state.last_plane_count = None
+    st.session_state.last_raw_plane_count = None
 
 
 # テンプレートの読み込み
@@ -694,9 +690,29 @@ def resolve_pixel_color(pixel_value, fg_color, bg_color, antialias):
     return blend_colors(fg_color, bg_color, pixel_value)
 
 
-def pixels_to_planes(pixels, plane_template, spacing=0.05, threshold=1, color=None,
-                     edge_color=None, antialias=True,
-                     scale=1.0, start_x=None, start_z=None):
+def colors_close(color_a, color_b, threshold):
+    if threshold <= 0:
+        return color_a == color_b
+    for channel in ("r", "g", "b"):
+        if abs(color_a[channel] - color_b[channel]) > threshold:
+            return False
+    return True
+
+
+def pixels_to_planes(
+    pixels,
+    plane_template,
+    spacing=0.05,
+    threshold=1,
+    color=None,
+    edge_color=None,
+    antialias=True,
+    scale=1.0,
+    start_x=None,
+    start_z=None,
+    merge_horizontal=False,
+    merge_color_threshold=0.05,
+):
     """ピクセルデータから平面オブジェクトを生成"""
     height, width = pixels.shape
     planes = []
@@ -713,17 +729,58 @@ def pixels_to_planes(pixels, plane_template, spacing=0.05, threshold=1, color=No
     effective_threshold = 1 if antialias else 128
 
     for row in range(height):
+        run_start = None
+        run_color = None
+        run_end = None
+
         for col in range(width):
             pixel_value = pixels[row, col]
-
             if pixel_value >= effective_threshold:
-                x = start_x + (width - 1 - col) * spacing
-                z = start_z + row * spacing
-                y = 0.0
-
                 shaded_color = resolve_pixel_color(pixel_value, color, edge_color, antialias)
-                plane = create_plane(plane_template, x, y, z, shaded_color, scale)
-                planes.append(plane)
+                if run_start is None:
+                    run_start = col
+                    run_end = col
+                    run_color = shaded_color
+                elif merge_horizontal and colors_close(shaded_color, run_color, merge_color_threshold):
+                    run_end = col
+                else:
+                    run_length = run_end - run_start + 1
+                    x_first = start_x + (width - 1 - run_start) * spacing
+                    x_last = start_x + (width - 1 - run_end) * spacing
+                    x = (x_first + x_last) / 2
+                    z = start_z + row * spacing
+                    y = 0.0
+                    plane = create_plane(plane_template, x, y, z, run_color, scale)
+                    plane["data"]["scale"]["x"] = scale * run_length
+                    planes.append(plane)
+                    run_start = col
+                    run_end = col
+                    run_color = shaded_color
+            else:
+                if run_start is not None:
+                    run_length = run_end - run_start + 1
+                    x_first = start_x + (width - 1 - run_start) * spacing
+                    x_last = start_x + (width - 1 - run_end) * spacing
+                    x = (x_first + x_last) / 2
+                    z = start_z + row * spacing
+                    y = 0.0
+                    plane = create_plane(plane_template, x, y, z, run_color, scale)
+                    plane["data"]["scale"]["x"] = scale * run_length
+                    planes.append(plane)
+                    run_start = None
+                    run_end = None
+                    run_color = None
+
+        if run_start is not None:
+            run_length = run_end - run_start + 1
+            x_first = start_x + (width - 1 - run_start) * spacing
+            x_last = start_x + (width - 1 - run_end) * spacing
+            x = (x_first + x_last) / 2
+            z = start_z + row * spacing
+            y = 0.0
+            plane = create_plane(plane_template, x, y, z, run_color, scale)
+            plane["data"]["scale"]["x"] = scale * run_length
+            planes.append(plane)
 
     return planes
 
@@ -731,7 +788,8 @@ def pixels_to_planes(pixels, plane_template, spacing=0.05, threshold=1, color=No
 def generate_text_scene(text, template_scene, plane_template, folder_key, folder_obj,
                        grid_width=80, grid_height=60, font_size=100,
                        text_scale=0.25, spacing=None, threshold=1, color=None, edge_color=None,
-                       antialias=True, font_path=None):
+                       antialias=True, font_path=None, merge_horizontal=False,
+                       merge_color_threshold=0.05):
     """テキストから3Dシーンを生成"""
     # spacing = scale × 0.2 の関係を利用
     if spacing is None:
@@ -761,6 +819,7 @@ def generate_text_scene(text, template_scene, plane_template, folder_key, folder
 
     char_folders = []
     plane_count = 0
+    raw_plane_count = 0
     effective_threshold = 1 if antialias else 128
 
     for index, char in enumerate(text):
@@ -778,6 +837,7 @@ def generate_text_scene(text, template_scene, plane_template, folder_key, folder
             per_char_resolution,
             vertical_align="bottom",
         )
+        raw_plane_count += int(np.sum(char_pixels >= effective_threshold))
 
         start_col = display_index * per_char_resolution
         pixels[:, start_col:start_col + per_char_resolution] = char_pixels
@@ -799,7 +859,9 @@ def generate_text_scene(text, template_scene, plane_template, folder_key, folder
                 antialias=antialias,
                 scale=plane_scale,
                 start_x=char_start_x,
-                start_z=global_start_z
+                start_z=global_start_z,
+                merge_horizontal=merge_horizontal,
+                merge_color_threshold=merge_color_threshold,
         )
         for plane in planes:
             plane['data']['position']['x'] -= center_x
@@ -832,7 +894,7 @@ def generate_text_scene(text, template_scene, plane_template, folder_key, folder
     new_folder['data']['treeState'] = 1
     scene.dicObject = {folder_key: new_folder}
 
-    return scene, img, pixels, plane_count
+    return scene, img, pixels, plane_count, raw_plane_count
 
 
 # メイン UI
@@ -850,7 +912,7 @@ try:
     text_input = st.text_input("📝 テキスト", value="愛", max_chars=50)
     available_fonts = list_available_fonts()
     font_options = available_fonts
-    default_font = FONT_DIR / "NotoSansJP-Regular.ttf"
+    default_font = FONT_DIR / "DelaGothicOne-Regular.ttf"
     if default_font in available_fonts:
         default_index = font_options.index(default_font)
     else:
@@ -883,8 +945,8 @@ try:
             per_char_resolution = st.slider(
                 "一文字あたり細かさ",
                 min_value=10,
-                max_value=100,
-                value=40,
+                max_value=200,
+                value=50,
                 step=5,
                 help="この値を大きくするほど文字が綺麗になる一方、シーンが重くなります",
             )
@@ -898,10 +960,12 @@ try:
         color_hex = st.color_picker("色", value="#FFFFFF")
         edge_color_hex = st.color_picker("縁の色", value="#000000")
         antialias = st.checkbox("アンチエイリアスを使う", value=True)
+        merge_horizontal = st.checkbox("横方向の平面結合", value=True, help="横方向に色が一致していれば長方形で代替し平面の数を大幅に減らします。1Pixelごといじりたいのであればこのチェックを外してください。")
+        merge_color_threshold = 0.0
         plane_size_factor = st.slider(
             "平面の大きさ",
             min_value=0.5, max_value=1.0, value=1.0, step=0.05,
-            help="1.0が現在の大きさ。小さくすると文字がスカスカになります"
+            help="1.0が現在の大きさ。小さくすると文字がスカスカになります。ドット感のある文字の描写に使います。"
         )
 
     st.markdown("---")
@@ -933,7 +997,7 @@ try:
     st.markdown("---")
 
     # 生成ボタン
-    generate_button = st.button("🚀 シーンを生成", type="primary", use_container_width=True)
+    generate_button = st.button("🚀 シーンを生成", type="primary", width="stretch")
 
     # 生成処理
     if generate_button:
@@ -944,7 +1008,7 @@ try:
                 try:
                     color = hex_to_color(color_hex)
                     edge_color = hex_to_color(edge_color_hex)
-                    scene, original_img, pixels, plane_count = generate_text_scene(
+                    scene, original_img, pixels, plane_count, raw_plane_count = generate_text_scene(
                         text=text_input,
                         template_scene=template_scene,
                         plane_template=plane_template,
@@ -960,7 +1024,11 @@ try:
                         edge_color=edge_color,
                         antialias=antialias,
                         font_path=selected_font,
+                        merge_horizontal=merge_horizontal,
+                        merge_color_threshold=merge_color_threshold,
                     )
+                    st.session_state.last_plane_count = plane_count
+                    st.session_state.last_raw_plane_count = raw_plane_count
 
                     st.success(f"✅ 生成完了！ ({plane_count} 個の平面)")
 
@@ -974,11 +1042,11 @@ try:
 
                     with preview_col1:
                         st.markdown("**元のテキスト画像**")
-                        st.image(original_img, use_container_width=True)
+                        st.image(original_img, width="stretch")
 
                     with preview_col2:
                         st.markdown(f"**ピクセルデータ ({grid_width}×{grid_height})**")
-                        st.image(Image.fromarray(preview_pixels), use_container_width=True)
+                        st.image(Image.fromarray(preview_pixels), width="stretch")
 
                     # シーン情報
                     st.subheader("📝 シーン情報")
@@ -988,6 +1056,10 @@ try:
                     - **平面数**: {plane_count}
                     - **推定ファイルサイズ**: 約 {len(bytes(scene)) / 1024:.1f} KB
                     """)
+                    if raw_plane_count is not None:
+                        delta = raw_plane_count - plane_count
+                        delta_text = f"-{delta}" if delta >= 0 else f"+{abs(delta)}"
+                        st.metric("平面削減", delta_text, f"{plane_count}/{raw_plane_count}")
 
                     # ダウンロードボタン
                     safe_text = "".join(c if c.isalnum() else "_" for c in text_input)
@@ -1005,7 +1077,7 @@ try:
                         file_name=filename,
                         mime="image/png",
                         type="primary",
-                        use_container_width=True
+                        width="stretch"
                     )
 
                 except Exception as e:
