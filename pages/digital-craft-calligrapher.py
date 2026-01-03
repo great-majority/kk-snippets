@@ -640,12 +640,12 @@ class HoneycomeSceneDataSimple:
 # ============================
 # ページ設定
 st.set_page_config(
-    page_title="Digital Craft Calligrapher",
+    page_title="デジクラカリグラファー",
     page_icon="✨",
     layout="wide"
 )
 
-st.title("✨ Digital Craft Calligrapher")
+st.title("✨ デジクラカリグラファー")
 st.markdown("テキストをデジタルクラフトのシーン内で平面を並べて再現します。ダウンロードしたシーンをインポートして使えます。")
 
 
