@@ -25,7 +25,7 @@ def format_font_option(font_path):
         "NotoSansJP-Regular.ttf": "ゴシック体",
         "NotoSerifJP-Regular.ttf": "明朝体",
         "YujiSyuku-Regular.ttf": "毛筆風",
-        "MPLUSRounded1c-Regular.ttf": "やわらかい",
+        "MPLUSRounded1c-Regular.ttf": "やわらかな書体",
         "KleeOne-SemiBold.ttf": "手書き風",
         "DelaGothicOne-Regular.ttf": "極太",
         "YuseiMagic-Regular.ttf": "ポップ",
@@ -1067,9 +1067,9 @@ try:
     st.header("⚙️ パラメータ設定")
 
     # テキスト入力
-    text_input = st.text_input("📝 テキスト", value="愛", max_chars=50)
+    text_input = st.text_input("📝 テキスト", value="", max_chars=50, placeholder="ここにテキストを入力")
     available_fonts = list_available_fonts()
-    selected_font = select_font_option(available_fonts, "DelaGothicOne-Regular.ttf")
+    selected_font = select_font_option(available_fonts, "MPLUSRounded1c-Regular.ttf")
 
     st.markdown("---")
 
@@ -1092,7 +1092,7 @@ try:
                 "一文字あたり細かさ",
                 min_value=10,
                 max_value=200,
-                value=50,
+                value=100,
                 step=5,
                 help="文字のピクセルの細かさ。この値を大きくするほど文字が綺麗になる一方、シーンが重くなります",
             )
@@ -1130,7 +1130,7 @@ try:
     # 生成処理
     if generate_button:
         if not text_input:
-            st.error("テキストを入力してください")
+            st.error("テキストが入力されていません")
         else:
             with st.spinner("シーンを生成中..."):
                 try:
