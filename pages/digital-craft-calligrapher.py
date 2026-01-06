@@ -4,6 +4,8 @@ import json
 import struct
 from pathlib import Path
 from typing import Any, BinaryIO, Dict, Union
+import uuid
+import textwrap
 
 from kkloader.funcs import get_png, load_string, load_type, write_string
 from PIL import Image, ImageDraw, ImageFont
@@ -14,6 +16,10 @@ SPACING_RATIO = 0.2
 FONT_SIZE = 200
 FONT_DIR = Path(__file__).parent / "digital-craft-calligrapher-data"
 CHAR_CANVAS_PADDING = 5
+PLANE_PRESETS = {
+    "平面(マップ)": {"group": 0, "category": 0, "no": 215},
+    "平面(キャラ)": {"group": 1, "category": 0, "no": 290},
+}
 
 
 def list_available_fonts():
@@ -28,7 +34,9 @@ def format_font_option(font_path):
         "MPLUSRounded1c-Regular.ttf": "やわらかな書体",
         "KleeOne-SemiBold.ttf": "手書き風",
         "DelaGothicOne-Regular.ttf": "極太",
-        "YuseiMagic-Regular.ttf": "ポップ",
+        "YuseiMagic-Regular.ttf": "油性マジック",
+        "DotGothic16-Regular.ttf": "ドット文字",
+        "KaiseiDecol-Regular.ttf": "おしゃれ明朝",
     }
     note = impressions.get(font_path.name)
     if note:
@@ -122,8 +130,8 @@ def build_scene_filename(text_input):
 
 TEMPLATE_SCENE_META = {
     "version": "1.0.0",
-    "data_id_1": "deadbeef-dead-beef-dead-beefdeadbeef",
-    "data_id_2": "deadbeef-dead-beef-dead-beefdeadbeef",
+    "user_id": "deadbeef-dead-beef-dead-beefdeadbeef",
+    "data_id": "deadbeef-dead-beef-dead-beefdeadbeef",
     "title": "テンプレート",
     "unknown_1": 1,
     "unknown_2": 32,
@@ -167,12 +175,12 @@ TEMPLATE_PLANE_DATA = {
     "scale": {"x": 1.0, "y": 1.0, "z": 1.0},
     "treeState": 1,
     "visible": True,
+    "unknown_1": 0,
+    "unknown_2": 0,
     "group": 0,
     "category": 0,
-    "no": 0,
-    "anime_pattern": 0,
-    "anime_speed": 3.0127916982983567e-43,
-    "unknown_1": b"\x00\x00\x00\x00\x00\x00\x80?",
+    "no": 215,
+    "unknown_3": b"\x00\x00\x00\x00\x00\x00\x80?",
     "colors": [
         {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
         {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
@@ -183,8 +191,8 @@ TEMPLATE_PLANE_DATA = {
         {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
         {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
     ],
-    "unknown_2": -1,
-    "unknown_3": False,
+    "unknown_4": -1,
+    "unknown_5": False,
     "patterns": [
         {
             "unknown_float": 1.0,
@@ -208,20 +216,20 @@ TEMPLATE_PLANE_DATA = {
             "uv": {"x": 0.0, "y": 0.0, "z": 1.0, "w": 1.0},
         },
     ],
-    "unknown_4": b"\x00\x00\x00\x00",
+    "unknown_6": b"\x00\x00\x00\x00",
     "alpha": 1.0,
     "line_color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0},
     "line_width": 1.0,
     "emission_color": {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
     "emission_power": 0.0,
     "light_cancel": 0.0,
-    "unknown_5": b"\x00\x00\x00\x00\x00\x00",
-    "unknown_6": '{"x":0.0,"y":0.0,"z":1.0,"w":1.0}',
-    "unknown_7": b"\x00\x00\x00\x00",
+    "unknown_7": b"\x00\x00\x00\x00\x00\x00",
+    "unknown_8": '{"x":0.0,"y":0.0,"z":1.0,"w":1.0}',
+    "unknown_9": b"\x00\x00\x00\x00",
     "enable_fk": False,
     "bones": {},
     "enable_dynamic_bone": True,
-    "unknown_8": True,
+    "unknown_10": True,
     "anime_normalized_time": 0.0,
     "child": [],
 }
@@ -232,8 +240,8 @@ def build_template_scene() -> "HoneycomeSceneDataSimple":
     scene.image = None
     scene.version = TEMPLATE_SCENE_META["version"]
     scene.dataVersion = TEMPLATE_SCENE_META["version"]
-    scene.data_id_1 = TEMPLATE_SCENE_META["data_id_1"]
-    scene.data_id_2 = TEMPLATE_SCENE_META["data_id_2"]
+    scene.user_id = TEMPLATE_SCENE_META["user_id"]
+    scene.data_id = TEMPLATE_SCENE_META["data_id"]
     scene.title = TEMPLATE_SCENE_META["title"]
     scene.unknown_1 = TEMPLATE_SCENE_META["unknown_1"]
     scene.unknown_2 = TEMPLATE_SCENE_META["unknown_2"]
@@ -382,17 +390,17 @@ class HoneycomeSceneObjectLoader:
         data_stream: BinaryIO, obj_info: Dict[str, Any], version: str = None
     ) -> None:
         data = HoneycomeSceneObjectLoader._load_object_info_base(data_stream)
+        data["unknown_1"] = struct.unpack("i", data_stream.read(4))[0]
+        data["unknown_2"] = struct.unpack("i", data_stream.read(4))[0]
         data["group"] = struct.unpack("i", data_stream.read(4))[0]
-        data["category"] = struct.unpack("i", data_stream.read(4))[0]
-        data["no"] = struct.unpack("i", data_stream.read(4))[0]
 
         if HoneycomeSceneObjectLoader._compare_versions(version, "1.1.1.0") >= 0:
-            data["anime_pattern"] = struct.unpack("i", data_stream.read(4))[0]
+            data["category"] = struct.unpack("i", data_stream.read(4))[0]
         else:
-            data["anime_pattern"] = 0
+            data["category"] = 0
 
-        data["anime_speed"] = struct.unpack("f", data_stream.read(4))[0]
-        data["unknown_1"] = data_stream.read(8)
+        data["no"] = struct.unpack("i", data_stream.read(4))[0]
+        data["unknown_3"] = data_stream.read(8)
 
         data["colors"] = []
         if HoneycomeSceneObjectLoader._compare_versions(version, "0.0.3") >= 0:
@@ -408,8 +416,8 @@ class HoneycomeSceneObjectLoader:
         if num_colors == 7:
             data["colors"].append({"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0})
 
-        data["unknown_2"] = struct.unpack("i", data_stream.read(4))[0]
-        data["unknown_3"] = bool(struct.unpack("b", data_stream.read(1))[0])
+        data["unknown_4"] = struct.unpack("i", data_stream.read(4))[0]
+        data["unknown_5"] = bool(struct.unpack("b", data_stream.read(1))[0])
 
         data["patterns"] = []
         for _ in range(3):
@@ -417,7 +425,7 @@ class HoneycomeSceneObjectLoader:
                 HoneycomeSceneObjectLoader.load_pattern_info(data_stream)
             )
 
-        data["unknown_4"] = data_stream.read(4)
+        data["unknown_6"] = data_stream.read(4)
         data["alpha"] = struct.unpack("f", data_stream.read(4))[0]
 
         if HoneycomeSceneObjectLoader._compare_versions(version, "0.0.4") >= 0:
@@ -443,9 +451,9 @@ class HoneycomeSceneObjectLoader:
             data["emission_power"] = 0.0
             data["light_cancel"] = 0.0
 
-        data["unknown_5"] = data_stream.read(6)
-        data["unknown_6"] = load_string(data_stream).decode("utf-8")
-        data["unknown_7"] = data_stream.read(4)
+        data["unknown_7"] = data_stream.read(6)
+        data["unknown_8"] = load_string(data_stream).decode("utf-8")
+        data["unknown_9"] = data_stream.read(4)
 
         data["enable_fk"] = bool(struct.unpack("b", data_stream.read(1))[0])
 
@@ -464,7 +472,7 @@ class HoneycomeSceneObjectLoader:
         else:
             data["enable_dynamic_bone"] = True
 
-        data["unknown_8"] = bool(struct.unpack("b", data_stream.read(1))[0])
+        data["unknown_10"] = bool(struct.unpack("b", data_stream.read(1))[0])
         data["anime_normalized_time"] = struct.unpack("f", data_stream.read(4))[0]
         data["child"] = HoneycomeSceneObjectLoader.load_child_objects(
             data_stream, version
@@ -490,15 +498,15 @@ class HoneycomeSceneObjectLoader:
         data = obj_info["data"]
         HoneycomeSceneObjectLoader._save_object_info_base(data_stream, data)
 
+        data_stream.write(struct.pack("i", data["unknown_1"]))
+        data_stream.write(struct.pack("i", data["unknown_2"]))
         data_stream.write(struct.pack("i", data["group"]))
-        data_stream.write(struct.pack("i", data["category"]))
-        data_stream.write(struct.pack("i", data["no"]))
 
         if HoneycomeSceneObjectLoader._compare_versions(version, "1.1.1.0") >= 0:
-            data_stream.write(struct.pack("i", data["anime_pattern"]))
+            data_stream.write(struct.pack("i", data["category"]))
 
-        data_stream.write(struct.pack("f", data["anime_speed"]))
-        data_stream.write(data["unknown_1"])
+        data_stream.write(struct.pack("i", data["no"]))
+        data_stream.write(data["unknown_3"])
 
         num_colors = (
             8
@@ -515,13 +523,13 @@ class HoneycomeSceneObjectLoader:
                 data_stream, json.dumps(color, separators=(",", ":")).encode("utf-8")
             )
 
-        data_stream.write(struct.pack("i", data["unknown_2"]))
-        data_stream.write(struct.pack("b", int(data["unknown_3"])))
+        data_stream.write(struct.pack("i", data["unknown_4"]))
+        data_stream.write(struct.pack("b", int(data["unknown_5"])))
 
         for pattern in data["patterns"]:
             HoneycomeSceneObjectLoader.save_pattern_info(data_stream, pattern)
 
-        data_stream.write(data["unknown_4"])
+        data_stream.write(data["unknown_6"])
         data_stream.write(struct.pack("f", data["alpha"]))
 
         if HoneycomeSceneObjectLoader._compare_versions(version, "0.0.4") >= 0:
@@ -541,9 +549,9 @@ class HoneycomeSceneObjectLoader:
             data_stream.write(struct.pack("f", data["emission_power"]))
             data_stream.write(struct.pack("f", data["light_cancel"]))
 
-        data_stream.write(data["unknown_5"])
-        write_string(data_stream, data["unknown_6"].encode("utf-8"))
         data_stream.write(data["unknown_7"])
+        write_string(data_stream, data["unknown_8"].encode("utf-8"))
+        data_stream.write(data["unknown_9"])
 
         data_stream.write(struct.pack("b", int(data["enable_fk"])))
         data_stream.write(struct.pack("i", len(data["bones"])))
@@ -554,7 +562,7 @@ class HoneycomeSceneObjectLoader:
         if HoneycomeSceneObjectLoader._compare_versions(version, "1.0.1") >= 0:
             data_stream.write(struct.pack("b", int(data["enable_dynamic_bone"])))
 
-        data_stream.write(struct.pack("b", int(data["unknown_8"])))
+        data_stream.write(struct.pack("b", int(data["unknown_10"])))
         data_stream.write(struct.pack("f", data["anime_normalized_time"]))
 
         data_stream.write(struct.pack("i", len(data.get("child", []))))
@@ -622,8 +630,8 @@ class HoneycomeSceneDataSimple:
         self.image = None
         self.version = None
         self.dataVersion = None
-        self.data_id_1 = None
-        self.data_id_2 = None
+        self.user_id = None
+        self.data_id = None
         self.title = None
         self.unknown_1 = None
         self.unknown_2 = None
@@ -649,8 +657,8 @@ class HoneycomeSceneDataSimple:
 
         hs.image = get_png(data_stream)
         version_str = load_string(data_stream).decode("utf-8")
-        hs.data_id_1 = load_string(data_stream).decode("utf-8")
-        hs.data_id_2 = load_string(data_stream).decode("utf-8")
+        hs.user_id = load_string(data_stream).decode("utf-8")
+        hs.data_id = load_string(data_stream).decode("utf-8")
         hs.title = load_string(data_stream).decode("utf-8")
         hs.unknown_1 = load_type(data_stream, "i")
         hs.unknown_2 = load_type(data_stream, "i")
@@ -680,8 +688,8 @@ class HoneycomeSceneDataSimple:
         data_stream.write(struct.pack("b", len(version_bytes)))
         data_stream.write(version_bytes)
 
-        write_string(data_stream, self.data_id_1.encode("utf-8"))
-        write_string(data_stream, self.data_id_2.encode("utf-8"))
+        write_string(data_stream, self.user_id.encode("utf-8"))
+        write_string(data_stream, self.data_id.encode("utf-8"))
         write_string(data_stream, self.title.encode("utf-8"))
 
         data_stream.write(struct.pack("i", self.unknown_1))
@@ -1037,8 +1045,8 @@ def generate_text_scene(
     scene = HoneycomeSceneDataSimple()
     scene.version = template_scene.version
     scene.dataVersion = template_scene.dataVersion
-    scene.data_id_1 = template_scene.data_id_1
-    scene.data_id_2 = template_scene.data_id_2
+    scene.user_id = template_scene.user_id
+    scene.data_id = str(uuid.uuid4())
     scene.title = f"テキスト: {text}"
     scene.unknown_1 = template_scene.unknown_1
     scene.unknown_2 = template_scene.unknown_2
@@ -1063,20 +1071,45 @@ try:
     if template_scene is None:
         st.stop()
 
+    with st.expander("❓ Q&A", expanded=False):
+        st.markdown(
+            textwrap.dedent(
+                """
+                #### 文字を入れると重い！
+
+                **アンチエイリアス** をOFFにし、 **横方向の平面結合** を有効にすると最も平面の数が小さくなります。
+
+                他にも **一文字あたり細かさ**を下げることで平面数が減りますが、文字の解像度が下がるので可読性も悪くなってしまいます。
+                どうしても平面数を下げたければこのパラメータを調整していい塩梅を探してみてください。
+                """
+            ).strip()
+        )
+
     # メインページでパラメータ設定
     st.header("⚙️ パラメータ設定")
 
     # テキスト入力
-    text_input = st.text_input("📝 テキスト", value="", max_chars=50, placeholder="ここにテキストを入力")
+    text_input = st.text_input(
+        "📝 テキスト", value="", max_chars=50, placeholder="ここにテキストを入力"
+    )
     available_fonts = list_available_fonts()
     selected_font = select_font_option(available_fonts, "MPLUSRounded1c-Regular.ttf")
 
+    # 色設定
+    color_hex = st.color_picker("色", value="#FFFFFF")
+    color_alpha = st.slider(
+        "色の透明度(マップ平面のみ有効)",
+        min_value=0.0,
+        max_value=1.0,
+        value=1.0,
+        step=0.05,
+    )
     st.markdown("---")
 
     # 文字の大きさ（縦幅）
     st.subheader("📏 文字の大きさ")
     st.text(
-        "文字の縦幅。0.1でキャラの手のひらほどの大きさ、1.7でキャラの身長ほどの大きさになります。"
+        "文字の縦幅。0.1で一文字がキャラの手のひらほどの大きさ、1.7でキャラの身長ほどの大きさになります。"
     )
     text_height = st.slider("縦幅", min_value=0.1, max_value=2.0, value=0.5, step=0.05)
 
@@ -1101,10 +1134,8 @@ try:
         with col2:
             threshold = 1
 
-        # 色モード
-        color_hex = st.color_picker("色", value="#FFFFFF")
-        edge_color_hex = st.color_picker("縁の色", value="#000000")
         antialias = st.checkbox("アンチエイリアスを使う", value=True)
+        edge_color_hex = st.color_picker("アンチエイリアスの色", value="#000000")
         merge_horizontal = st.checkbox(
             "横方向の平面結合",
             value=True,
@@ -1118,6 +1149,20 @@ try:
             value=1.0,
             step=0.05,
             help="1.0が現在の大きさ。小さくすると文字がスカスカになります。ドット感のある文字の描写に使います。",
+        )
+        plane_preset = st.selectbox(
+            "使用する平面",
+            options=["平面(マップ)", "平面(キャラ)"],
+            index=0,
+            help="マップの方の平面を使うか、キャラの方の平面を使うかを設定します。マップライトとキャラライトのどちらのライトに影響されるかが決まります。",
+        )
+        light_cancel = st.slider(
+            "ライトの影響度",
+            min_value=0.0,
+            max_value=1.0,
+            value=1.0,
+            step=0.05,
+            help='アイテム設定の"ライトの影響度"を一括設定します。1ほどライトを反射しやすく、0ほどライトを吸収しやすくなります。',
         )
 
     layout = compute_layout(
@@ -1135,12 +1180,24 @@ try:
             with st.spinner("シーンを生成中..."):
                 try:
                     color = hex_to_color(color_hex)
+                    color["a"] = color_alpha
                     edge_color = hex_to_color(edge_color_hex)
+                    plane_settings = PLANE_PRESETS[plane_preset]
+
                     scene, original_img, pixels, plane_count, raw_plane_count = (
                         generate_text_scene(
                             text=text_input,
                             template_scene=template_scene,
-                            plane_template=plane_template,
+                            plane_template={
+                                **plane_template,
+                                "data": {
+                                    **plane_template["data"],
+                                    "group": plane_settings["group"],
+                                    "category": plane_settings["category"],
+                                    "no": plane_settings["no"],
+                                    "light_cancel": 1.0 - light_cancel,
+                                },
+                            },
                             folder_key=folder_key,
                             folder_obj=folder_obj,
                             grid_height=layout["grid_height"],
