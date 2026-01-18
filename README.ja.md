@@ -40,3 +40,8 @@ https://kk-snippets.streamlit.app/sv-stat
 https://kk-snippets.streamlit.app/digital-craft-calligrapher
 
 好きなテキストを平面を並べたデジタルクラフトのシーンファイルとして出力するツールです。フォント選択やサイズ調整もできます。
+
+### デジクラアイテム変換ツール
+https://kk-snippets.streamlit.app/digital-craft-item-converter
+
+デジタルクラフトのシーンデータ内のプレーンアイテムをマップライト/キャラライト間で変換するツールです。キャラライトからマップライトへの変換時は、アイテムのアルファ値（透明度）も調整できます。

@@ -42,3 +42,8 @@ A tool for analyzing and displaying relationship data and action history between
 https://kk-snippets.streamlit.app/digital-craft-calligrapher
 
 A tool that outputs your text as a digital craft scene file made of planes. It also supports font selection and size adjustments.
+
+### Digital Craft Item Converter
+https://kk-snippets.streamlit.app/digital-craft-item-converter
+
+A tool for converting plane items between Map Light and Character Light in Digital Craft scene data. When converting from Character Light to Map Light, you can also adjust the alpha (transparency) value of the items.
