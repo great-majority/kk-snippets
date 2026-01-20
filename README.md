@@ -46,4 +46,4 @@ A tool that outputs your text as a digital craft scene file made of planes. It a
 ### Digital Craft Item Converter
 https://kk-snippets.streamlit.app/digital-craft-item-converter
 
-A tool for converting plane items between Map Light and Character Light in Digital Craft scene data. When converting from Character Light to Map Light, you can also adjust the alpha (transparency) value of the items.
+A tool for converting plane items between Map Object and Character Object in Digital Craft scene data. When converting from Character Light to Map Light, you can also adjust the alpha (transparency) value of the items.
