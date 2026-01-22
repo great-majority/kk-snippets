@@ -92,8 +92,9 @@ This tool allows you to convert character data between Honey Come, Summer Vacati
         "download_hc": "Download as Honey Come character",
         "download_ac": "Download as Aicomi character",
         "language_selector": "Language / 言語",
-    }
+    },
 }
+
 
 def get_text(key, lang="ja"):
     """指定した言語のテキストを取得"""
@@ -118,7 +119,7 @@ class KoikatuCharaHeader:
             data_stream = filelike
 
         else:
-            ValueError("unsupported input. type:{}".format(type(filelike)))
+            raise ValueError("unsupported input. type:{}".format(type(filelike)))
 
         kch.image = None
         if contains_png:
@@ -131,34 +132,36 @@ class KoikatuCharaHeader:
 
         return kch
 
+
 class StubBlockData(BlockData):
     def __init__(self, name, version):
         self.name = name
         self.data = {}
         self.version = version
 
+
 # ========================================
 # それぞれのタイトル固有パラメータのデフォルト値
 # ========================================
 
 GAME_CONFIG = {
-    'HC': {
-        'class': HoneycomeCharaData,
-        'header': '【HCChara】',
-        'product_no': 200,
-        'blocks': ['GameParameter_HC', 'GameInfo_HC'],
+    "HC": {
+        "class": HoneycomeCharaData,
+        "header": "【HCChara】",
+        "product_no": 200,
+        "blocks": ["GameParameter_HC", "GameInfo_HC"],
     },
-    'SV': {
-        'class': SummerVacationCharaData,
-        'header': '【SVChara】',
-        'product_no': 100,
-        'blocks': ['GameParameter_SV', 'GameInfo_SV'],
+    "SV": {
+        "class": SummerVacationCharaData,
+        "header": "【SVChara】",
+        "product_no": 100,
+        "blocks": ["GameParameter_SV", "GameInfo_SV"],
     },
-    'AC': {
-        'class': AicomiCharaData,
-        'header': '【ACChara】',
-        'product_no': 100,
-        'blocks': ['GameParameter_AC', 'GameInfo_AC'],
+    "AC": {
+        "class": AicomiCharaData,
+        "header": "【ACChara】",
+        "product_no": 100,
+        "blocks": ["GameParameter_AC", "GameInfo_AC"],
     },
 }
 
@@ -166,11 +169,7 @@ COMMON_BLOCKS = ["Custom", "Coordinate", "Parameter", "Status", "Graphic", "Abou
 
 # ハニカム
 
-DEFAULT_GAMEPARAMETER_HC = {
-    "trait": 0,
-    "mind": 0,
-    "hAttribute": 10
-}
+DEFAULT_GAMEPARAMETER_HC = {"trait": 0, "mind": 0, "hAttribute": 10}
 
 DEFAULT_GAMEINFO_HC = {
     "Favor": 0,
@@ -194,8 +193,36 @@ DEFAULT_GAMEINFO_HC = {
     "escapeExperienced": False,
     "firstHFlag": False,
     "genericVoice": [
-        [False, False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False, False, False, False, False, False]
+        [
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+        ],
+        [
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+        ],
     ],
     "genericBrokenVoice": False,
     "genericDependencepVoice": False,
@@ -240,7 +267,7 @@ DEFAULT_GAMEPARAMETER_SV = {
     "isMaleVirgin": True,
     "isMaleAnalVirgin": True,
     "individuality": {"answer": [-1, -1]},
-    "preferenceH": {"answer": [-1, -1]}
+    "preferenceH": {"answer": [-1, -1]},
 }
 
 # アイコミ
@@ -328,6 +355,7 @@ DEFAULT_ACCCESORY_AC = {
 # ヘルパー関数
 # ========================================
 
+
 def init_chara_base(target_class, source, header, product_no, face_image=None):
     """キャラクターデータの基本初期化"""
     chara = target_class()
@@ -377,40 +405,56 @@ def expand_accessories(chara, from_count, to_count, num_costumes):
 
     for i in range(num_costumes):
         for _ in range(to_count - from_count):
-            chara.Coordinate[i]["accessory"]["parts"].append(copy.deepcopy(DEFAULT_ACCCESORY_AC))
+            chara.Coordinate[i]["accessory"]["parts"].append(
+                copy.deepcopy(DEFAULT_ACCCESORY_AC)
+            )
 
 
 def shrink_accessories(chara, from_count, to_count, num_costumes):
     """アクセサリー数を縮小（40→20など）"""
     if len(chara.Status.data["showAccessory"]) > to_count:
-        chara.Status.data["showAccessory"] = chara.Status.data["showAccessory"][:to_count]
+        chara.Status.data["showAccessory"] = chara.Status.data["showAccessory"][
+            :to_count
+        ]
 
     for i in range(num_costumes):
         if len(chara.Coordinate[i]["accessory"]["parts"]) > to_count:
-            chara.Coordinate[i]["accessory"]["parts"] = chara.Coordinate[i]["accessory"]["parts"][:to_count]
+            chara.Coordinate[i]["accessory"]["parts"] = chara.Coordinate[i][
+                "accessory"
+            ]["parts"][:to_count]
 
 
 def transform_paint_scale_hc_to_sv(chara, num_costumes=3):
     """ペイントスケールをHC→SV変換"""
     for i in range(num_costumes):
         for n in range(3):
-            original_scale = chara["Coordinate"][i]["makeup"]["paintInfos"][n]["layout"][3]
-            chara["Coordinate"][i]["makeup"]["paintInfos"][n]["layout"][3] = 0.5 * original_scale + 0.25
+            original_scale = chara["Coordinate"][i]["makeup"]["paintInfos"][n][
+                "layout"
+            ][3]
+            chara["Coordinate"][i]["makeup"]["paintInfos"][n]["layout"][3] = (
+                0.5 * original_scale + 0.25
+            )
 
 
 def transform_paint_scale_sv_to_hc(chara, num_costumes=3):
     """ペイントスケールをSV→HC変換"""
     for i in range(num_costumes):
         for n in range(3):
-            original_scale = chara["Coordinate"][i]["makeup"]["paintInfos"][n]["layout"][3]
-            chara["Coordinate"][i]["makeup"]["paintInfos"][n]["layout"][3] = 2 * original_scale - 0.5
+            original_scale = chara["Coordinate"][i]["makeup"]["paintInfos"][n][
+                "layout"
+            ][3]
+            chara["Coordinate"][i]["makeup"]["paintInfos"][n]["layout"][3] = (
+                2 * original_scale - 0.5
+            )
 
 
 def add_sv_specific_fields(chara, num_costumes=3):
     """SVにしかないフィールドを追加"""
     for i in range(num_costumes):
         chara["Coordinate"][i]["isSteamLimited"] = False
-        chara["Coordinate"][i]["coverInfos"] = [{"use": False, "infoTable": {}} for _ in range(8)]
+        chara["Coordinate"][i]["coverInfos"] = [
+            {"use": False, "infoTable": {}} for _ in range(8)
+        ]
 
 
 def remove_sv_specific_fields(chara, num_costumes=3):
@@ -427,7 +471,9 @@ def add_ac_specific_accessory_fields(chara, num_costumes=4):
     for i in range(num_costumes):
         for n in range(40):
             chara.Coordinate[i]["accessory"]["parts"][n]["hideCategoryClothes"] = -1
-            chara.Coordinate[i]["accessory"]["parts"][n]["visibleTimings"] = [True for _ in range(3)]
+            chara.Coordinate[i]["accessory"]["parts"][n]["visibleTimings"] = [
+                True for _ in range(3)
+            ]
 
 
 def remove_ac_specific_accessory_fields(chara, num_costumes=3):
@@ -444,17 +490,18 @@ def remove_ac_specific_accessory_fields(chara, num_costumes=3):
 # 変換関数
 # ========================================
 
+
 # ハニカムキャラ->サマすくキャラへの変換
 def hc_to_sv(hc: HoneycomeCharaData) -> SummerVacationCharaData:
     assert isinstance(hc, HoneycomeCharaData)
 
     # 基本初期化
-    config = GAME_CONFIG['SV']
-    svc = init_chara_base(config['class'], hc, config['header'], config['product_no'])
+    config = GAME_CONFIG["SV"]
+    svc = init_chara_base(config["class"], hc, config["header"], config["product_no"])
 
     # ブロックデータの設定と共通ブロックのコピー
     common_blocks = copy_common_blocks(svc, hc)
-    setup_blockdata(svc, common_blocks, config['blocks'])
+    setup_blockdata(svc, common_blocks, config["blocks"])
 
     # ゲーム固有データの初期化
     svc.GameParameter_SV = StubBlockData("GameParameter_SV", "0.0.0")
@@ -479,12 +526,18 @@ def sv_to_hc(svc: SummerVacationCharaData) -> HoneycomeCharaData:
     assert isinstance(svc, SummerVacationCharaData)
 
     # 基本初期化（サマすくに顔データはないため通常画像で代用）
-    config = GAME_CONFIG['HC']
-    hc = init_chara_base(config['class'], svc, config['header'], config['product_no'], face_image=svc.image)
+    config = GAME_CONFIG["HC"]
+    hc = init_chara_base(
+        config["class"],
+        svc,
+        config["header"],
+        config["product_no"],
+        face_image=svc.image,
+    )
 
     # ブロックデータの設定と共通ブロックのコピー
     common_blocks = copy_common_blocks(hc, svc)
-    setup_blockdata(hc, common_blocks, config['blocks'])
+    setup_blockdata(hc, common_blocks, config["blocks"])
 
     # ゲーム固有データの初期化
     hc.GameParameter_HC = StubBlockData("GameParameter_HC", "0.0.0")
@@ -503,17 +556,18 @@ def sv_to_hc(svc: SummerVacationCharaData) -> HoneycomeCharaData:
 
     return hc
 
+
 # サマすくキャラ->アイコミキャラへの変換
 def sv_to_ac(svc: SummerVacationCharaData) -> AicomiCharaData:
     assert isinstance(svc, SummerVacationCharaData)
 
     # 基本初期化
-    config = GAME_CONFIG['AC']
-    ac = init_chara_base(config['class'], svc, config['header'], config['product_no'])
+    config = GAME_CONFIG["AC"]
+    ac = init_chara_base(config["class"], svc, config["header"], config["product_no"])
 
     # ブロックデータの設定と共通ブロックのコピー
     common_blocks = copy_common_blocks(ac, svc)
-    setup_blockdata(ac, common_blocks, config['blocks'])
+    setup_blockdata(ac, common_blocks, config["blocks"])
 
     # ゲーム固有データの初期化
     ac.GameParameter_AC = StubBlockData("GameParameter_AC", "0.0.0")
@@ -539,22 +593,25 @@ def sv_to_ac(svc: SummerVacationCharaData) -> AicomiCharaData:
 
     return ac
 
+
 # アイコミキャラ->サマすくキャラへの変換
 def ac_to_sv(ac: AicomiCharaData) -> SummerVacationCharaData:
     assert isinstance(ac, AicomiCharaData)
 
     # 基本初期化
-    config = GAME_CONFIG['SV']
-    svc = init_chara_base(config['class'], ac, config['header'], config['product_no'])
+    config = GAME_CONFIG["SV"]
+    svc = init_chara_base(config["class"], ac, config["header"], config["product_no"])
 
     # ブロックデータの設定と共通ブロックのコピー
     common_blocks = copy_common_blocks(svc, ac)
-    setup_blockdata(svc, common_blocks, config['blocks'])
+    setup_blockdata(svc, common_blocks, config["blocks"])
 
     # ゲーム固有データの初期化
     svc.GameParameter_SV = StubBlockData("GameParameter_SV", "0.0.0")
     svc.GameInfo_SV = StubBlockData("GameInfo_SV", "0.0.0")
-    svc.GameParameter_SV.data = create_default_sv_gameparameter(ac.GameParameter_AC.data["imageData"])
+    svc.GameParameter_SV.data = create_default_sv_gameparameter(
+        ac.GameParameter_AC.data["imageData"]
+    )
     svc.GameInfo_SV.data = {"version": "0.0.0"}
 
     # 私服と役職服の順序を元に戻す（ACの私服→SVSの役職服、ACの制服→SVSの私服）
@@ -591,7 +648,7 @@ with st.sidebar:
         "Language / 言語",
         options=["ja", "en"],
         format_func=lambda x: "日本語" if x == "ja" else "English",
-        index=0
+        index=0,
     )
 
 st.title(get_text("title", lang))
@@ -608,7 +665,6 @@ st.divider()
 # ファイルアップローダー
 file = st.file_uploader(get_text("file_uploader", lang))
 if file is not None:
-
     try:
         kch = KoikatuCharaHeader.load(file.getvalue())
     except Exception as e:
@@ -627,29 +683,29 @@ if file is not None:
     if header == "【HCChara】":
         st.write(get_text("file_is_hc", lang))
         hc = HoneycomeCharaData.load(file.getvalue())
-        name = " ".join([hc['Parameter']['lastname'], hc['Parameter']['firstname']])
+        name = " ".join([hc["Parameter"]["lastname"], hc["Parameter"]["firstname"]])
         svc = hc_to_sv(hc)
         st.download_button(
             get_text("download_sv", lang),
             bytes(svc),
-            file_name=f"sv_converted_{name}.png"
+            file_name=f"sv_converted_{name}.png",
         )
 
     elif header == "【SVChara】":
         st.write(get_text("file_is_sv", lang))
         svc = SummerVacationCharaData.load(file.getvalue())
-        name = " ".join([svc['Parameter']['lastname'], svc['Parameter']['firstname']])
+        name = " ".join([svc["Parameter"]["lastname"], svc["Parameter"]["firstname"]])
         hc = sv_to_hc(svc)
         ac = sv_to_ac(svc)
         st.download_button(
             get_text("download_hc", lang),
             bytes(hc),
-            file_name=f"hc_converted_{name}.png"
+            file_name=f"hc_converted_{name}.png",
         )
         st.download_button(
             get_text("download_ac", lang),
             bytes(ac),
-            file_name=f"ac_converted_{name}.png"
+            file_name=f"ac_converted_{name}.png",
         )
 
     elif header == "【ACChara】":

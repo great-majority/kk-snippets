@@ -1,30 +1,75 @@
-import io
 import copy
+import io
 
 import streamlit as st
 from kkloader.EmocreCharaData import EmocreCharaData  # noqa
 from kkloader.KoikatuCharaData import Coordinate, KoikatuCharaData  # noqa
 
-title = "エモクリ→コイカツキャラクター変換ツール"
-st.set_page_config(page_title=title)
-st.title(title)
+# ========================================
+# i18n対応: 多言語辞書
+# ========================================
 
-st.markdown("""エモーションクリエイターズで作成されたキャラクターを無印コイカツで読めるように変換するツールです。""")
+TRANSLATIONS = {
+    "ja": {
+        "title": "エモクリ→コイカツキャラクター変換ツール",
+        "description": "エモーションクリエイターズで作成されたキャラクターを無印コイカツで読めるように変換するツールです。",
+        "file_uploader": "エモーション・クリエイターズのキャラクター画像を選択",
+        "error_load": "ファイルの読み込みに失敗しました。未対応のファイルです。",
+        "header_label": "ヘッダ:",
+        "name_label": "キャラクター名:",
+        "card_image_caption": "カード画像",
+        "success_convert": "正常にデータを変換しました。",
+        "download_button": "データをダウンロード",
+    },
+    "en": {
+        "title": "Emocre → Koikatsu Character Converter",
+        "description": "A tool to convert characters created in Emotion Creators to be readable in original Koikatsu.",
+        "file_uploader": "Select an Emotion Creators character image",
+        "error_load": "Failed to load file. Unsupported file format.",
+        "header_label": "Header:",
+        "name_label": "Character name:",
+        "card_image_caption": "Card image",
+        "success_convert": "Data converted successfully.",
+        "download_button": "Download data",
+    },
+}
+
+
+def get_text(key, lang="ja"):
+    """指定した言語のテキストを取得"""
+    return TRANSLATIONS.get(lang, TRANSLATIONS["ja"]).get(key, key)
+
+
+# ページ設定とタイトル
+title = get_text("title", "ja")
+st.set_page_config(page_title=title)
+
+# サイドバーに言語選択を配置
+with st.sidebar:
+    lang = st.selectbox(
+        "Language / 言語",
+        options=["ja", "en"],
+        format_func=lambda x: "日本語" if x == "ja" else "English",
+        index=0,
+    )
+
+st.title(get_text("title", lang))
+
+st.markdown(get_text("description", lang))
 
 st.divider()
 
-file = st.file_uploader("エモーション・クリエイターズのキャラクター画像を選択")
+file = st.file_uploader(get_text("file_uploader", lang))
 if file is not None:
-
     try:
         ec = EmocreCharaData.load(file.getvalue())
     except Exception as e:
-        st.error("ファイルの読み込みに失敗しました。未対応のファイルです。", icon="🚨")
+        st.error(get_text("error_load", lang), icon="🚨")
         st.stop()
 
-    st.write("ヘッダ:", ec.header.decode('utf-8'))
-    st.write("キャラクター名:", ec['Parameter']['fullname'])
-    st.image(io.BytesIO(ec.image), caption="カード画像")
+    st.write(get_text("header_label", lang), ec.header.decode("utf-8"))
+    st.write(get_text("name_label", lang), ec["Parameter"]["fullname"])
+    st.image(io.BytesIO(ec.image), caption=get_text("card_image_caption", lang))
 
     kk = KoikatuCharaData()
 
@@ -41,7 +86,7 @@ if file is not None:
     kk.Coordinate = Coordinate(data=None, version="0.0.0")
     kk.Parameter = copy.deepcopy(ec.Parameter)
     kk.Status = copy.deepcopy(ec.Status)
-    
+
     if "KKEx" in ec.blockdata:
         kk.KKEx = copy.deepcopy(ec.KKEx)
 
@@ -141,5 +186,7 @@ if file is not None:
     kk.Status["backCoordinateType"] = 0
     kk.Status["shoesType"] = 1
 
-    st.success("正常にデータを変換しました。", icon="✅")
-    st.download_button("データをダウンロード", bytes(kk), file_name="converted.png")
+    st.success(get_text("success_convert", lang), icon="✅")
+    st.download_button(
+        get_text("download_button", lang), bytes(kk), file_name="converted.png"
+    )
