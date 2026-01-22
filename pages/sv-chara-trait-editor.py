@@ -1,18 +1,62 @@
-import struct
 import io
 import math
+import struct
+
 import pandas as pd
 import streamlit as st
+from kkloader import SummerVacationCharaData as svcd
 from msgpack import packb, unpackb
 
-from kkloader import SummerVacationCharaData as svcd
+# ========================================
+# i18n対応: 多言語辞書
+# ========================================
+
+TRANSLATIONS = {
+    "ja": {
+        "title": "サマすくキャラ特性エディター",
+        "description": """
+[サマバケ！すくらんぶる](https://www.illgames.jp/product/svs/)のセーブデータのうち、キャラクターの特性を編集するツールです。
+
+データ読み込み後、編集したい部分をダブルクリックすると値を選択することができます。
+
+**⚠️注意事項**: バグなどあるかもしれませんので、編集前のデータのバックアップはとっておきましょう!
+""",
+        "file_uploader": "サマすくのセーブデータを選択",
+        "error_load": "ファイルの読み込みに失敗しました。未対応のファイルです。",
+        "success_load": "正常にデータを読み込めました。",
+        "download_button": "改変後のセーブデータをダウンロード",
+        "col_name": "名前",
+    },
+    "en": {
+        "title": "Summer Vacation Character Trait Editor",
+        "description": """
+A tool to edit character traits in [Summer Vacation Scramble](https://www.illgames.jp/product/svs/) save data.
+
+After loading data, double-click on the part you want to edit to select a value.
+
+**⚠️Caution**: There may be bugs, so please back up your data before editing!
+""",
+        "file_uploader": "Select Summer Vacation save data",
+        "error_load": "Failed to load file. Unsupported file format.",
+        "success_load": "Data loaded successfully.",
+        "download_button": "Download modified save data",
+        "col_name": "Name",
+    },
+}
+
+
+def get_text(key, lang="ja"):
+    """指定した言語のテキストを取得"""
+    return TRANSLATIONS.get(lang, TRANSLATIONS["ja"]).get(key, key)
 
 
 ############################################
 # データ読み込み用関数(funcs.pyからコピペ)
 ############################################
 def load_length(data_stream, struct_type):
-    length = struct.unpack(struct_type, data_stream.read(struct.calcsize(struct_type)))[0]
+    length = struct.unpack(struct_type, data_stream.read(struct.calcsize(struct_type)))[
+        0
+    ]
     return data_stream.read(length)
 
 
@@ -81,8 +125,15 @@ class SVSSaveData:
         # プレイヤーのキャラデータが入っているオフセット位置
         svs.player_offset = cls._unsigned_int64(data_stream)
 
-        svs.names = {x["charasGameParam"]["Index"]: x["charasGameParam"]["onesPropertys"][0]["name"] for x in svs.chara_details}
-        svs.index_to_array = {x["charasGameParam"]["Index"]: i for i, x in enumerate(svs.chara_details)}
+        svs.names = {
+            x["charasGameParam"]["Index"]: x["charasGameParam"]["onesPropertys"][0][
+                "name"
+            ]
+            for x in svs.chara_details
+        }
+        svs.index_to_array = {
+            x["charasGameParam"]["Index"]: i for i, x in enumerate(svs.chara_details)
+        }
 
         return svs
 
@@ -99,7 +150,7 @@ class SVSSaveData:
 
         # セーブデータの先頭からプレイヤーキャラ部分までのオフセットを計算したい
         # メタ部分の長さ + メタ部分の長さの数字(4byte) + データ全長の数字(8byte) + キャラ数の数字(4byte)
-        player_offset += len(meta_b) + 4 + 8 + 4 
+        player_offset += len(meta_b) + 4 + 8 + 4
         player_offset_b = qpack(player_offset)
 
         data_length = len(meta_b) + len(chara_byte) + 4 + 8 + 4
@@ -128,20 +179,19 @@ class SVSSaveData:
 
         chara_bytes = []
         for chara, chara_detail in zip(self.charas, self.chara_details):
-            chara_detail_b, chara_detail_i = msg_pack(chara_detail) 
+            chara_detail_b, chara_detail_i = msg_pack(chara_detail)
             chara_detail_i_b = ipack.pack(chara_detail_i)
             chara_b = bytes(chara)
 
             # キャラクターデータの長さを整数値に変換
-            chara_length = sum(map(lambda x: len(x), [chara_detail_i_b, chara_detail_b, chara_b]))
+            chara_length = sum(
+                map(lambda x: len(x), [chara_detail_i_b, chara_detail_b, chara_b])
+            )
             chara_length_b = ipack.pack(chara_length)
 
-            chara_byte = b"".join([
-                chara_length_b,
-                chara_detail_i_b,
-                chara_detail_b,
-                chara_b
-            ])
+            chara_byte = b"".join(
+                [chara_length_b, chara_detail_i_b, chara_detail_b, chara_b]
+            )
 
             if chara_detail["charasGameParam"]["isPC"]:
                 after_player = True
@@ -159,9 +209,15 @@ class SVSSaveData:
             f.write(bytes(self))
 
     # 二者間の交流のログを隣接行列として取得する
-    def generate_interract_matrix(self, command: int = 0, active: bool = True, decision: str = "yes"):
-
-        names = {x["charasGameParam"]["Index"]: x["charasGameParam"]["onesPropertys"][0]["name"] for x in self.chara_details}
+    def generate_interract_matrix(
+        self, command: int = 0, active: bool = True, decision: str = "yes"
+    ):
+        names = {
+            x["charasGameParam"]["Index"]: x["charasGameParam"]["onesPropertys"][0][
+                "name"
+            ]
+            for x in self.chara_details
+        }
         interract = "activeCommand" if active else "passiveCommand"
 
         assert interract in ["activeCommand", "passiveCommand"]
@@ -169,17 +225,17 @@ class SVSSaveData:
 
         rows = {}
         for c in self.chara_details:
-
             from_index = c["charasGameParam"]["Index"]
             row = {}
             table = c["charasGameParam"]["memory"][interract]["DeadTable"]
 
             for d in self.chara_details:
-
                 to_index = d["charasGameParam"]["Index"]
 
                 if to_index in table and command in table[to_index]["save"]["infos"]:
-                    value = table[to_index]["save"]["infos"][command]["countInfo"][decision]
+                    value = table[to_index]["save"]["infos"][command]["countInfo"][
+                        decision
+                    ]
                 else:
                     value = None
 
@@ -190,8 +246,12 @@ class SVSSaveData:
         return pd.DataFrame.from_dict(rows).T
 
     # `generate_interract_matrix` から得た行列を編集したものを反映させる関数
-    def apply_interract_matrix(self, matrix: pd.DataFrame, command: int = 0, decision: str = "yes"):
-        index_to_array = {x["charasGameParam"]["Index"]: i for i, x in enumerate(self.chara_details)}
+    def apply_interract_matrix(
+        self, matrix: pd.DataFrame, command: int = 0, decision: str = "yes"
+    ):
+        index_to_array = {
+            x["charasGameParam"]["Index"]: i for i, x in enumerate(self.chara_details)
+        }
 
         decisions = ["yes", "no"]
         assert decision in decisions
@@ -200,14 +260,26 @@ class SVSSaveData:
 
         def set_value(from_idx: int, to_idx: int, interract: str, value: int):
             # これまでに交流がない場合、新たに辞書のkeyを初期化する
-            if to_idx not in self.chara_details[index_to_array[from_idx]]["charasGameParam"]["memory"][interract]["DeadTable"]:
-                self.chara_details[index_to_array[from_idx]]["charasGameParam"]["memory"][interract]["DeadTable"][to_idx] = {
-                    "save": {"infos": {}}
-                }
+            if (
+                to_idx
+                not in self.chara_details[index_to_array[from_idx]]["charasGameParam"][
+                    "memory"
+                ][interract]["DeadTable"]
+            ):
+                self.chara_details[index_to_array[from_idx]]["charasGameParam"][
+                    "memory"
+                ][interract]["DeadTable"][to_idx] = {"save": {"infos": {}}}
 
             # これまでに指定した交流をしていない場合、交流のkeyを初期化する
-            if command not in self.chara_details[index_to_array[from_idx]]["charasGameParam"]["memory"][interract]["DeadTable"][to_idx]["save"]["infos"]:
-                self.chara_details[index_to_array[from_idx]]["charasGameParam"]["memory"][interract]["DeadTable"][to_idx]["save"]["infos"][command] = {
+            if (
+                command
+                not in self.chara_details[index_to_array[from_idx]]["charasGameParam"][
+                    "memory"
+                ][interract]["DeadTable"][to_idx]["save"]["infos"]
+            ):
+                self.chara_details[index_to_array[from_idx]]["charasGameParam"][
+                    "memory"
+                ][interract]["DeadTable"][to_idx]["save"]["infos"][command] = {
                     "countInfo": {
                         "command": command,
                         "count": 0,
@@ -217,21 +289,25 @@ class SVSSaveData:
                     }
                 }
 
-            stats = self.chara_details[index_to_array[from_idx]]["charasGameParam"]["memory"][interract]["DeadTable"][to_idx]["save"]["infos"][command]["countInfo"]
+            stats = self.chara_details[index_to_array[from_idx]]["charasGameParam"][
+                "memory"
+            ][interract]["DeadTable"][to_idx]["save"]["infos"][command]["countInfo"]
             stats[decision] = value
-            stats["count"] = stats[decision] + stats[flipped_decision] + stats["ambiguous"]
+            stats["count"] = (
+                stats[decision] + stats[flipped_decision] + stats["ambiguous"]
+            )
 
             for k, v in stats.items():
                 stats[k] = int(v)
 
-            self.chara_details[index_to_array[from_idx]]["charasGameParam"]["memory"][interract]["DeadTable"][to_idx]["save"]["infos"][command]["countInfo"] = stats
+            self.chara_details[index_to_array[from_idx]]["charasGameParam"]["memory"][
+                interract
+            ]["DeadTable"][to_idx]["save"]["infos"][command]["countInfo"] = stats
 
         for i, row in matrix.iterrows():
-
             row_idx = int(i.split(":")[0])
 
             for j, col in row.items():
-
                 col_idx = int(j.split(":")[0])
                 col = int(col) if isinstance(col, str) else col
 
@@ -244,7 +320,6 @@ class SVSSaveData:
                 set_value(col_idx, row_idx, "passiveCommand", col)
 
     def generate_correlation_matrix(self):
-
         rows = {}
         for c in self.chara_details:
             from_index = c["charasGameParam"]["Index"]
@@ -274,59 +349,65 @@ class SVSSaveData:
                 counts = map(lambda v: v["countInfo"]["count"], commands.values())
                 counts = sum(counts)
 
-                self.chara_details[i]["charasGameParam"]["correlationTable"][to_index] = counts
+                self.chara_details[i]["charasGameParam"]["correlationTable"][
+                    to_index
+                ] = counts
+
 
 ############################################
 # Streamlitのロジック部分
 ############################################
-title = "サマすくキャラ特性エディター"
+# ページ設定とタイトル
+title = get_text("title", "ja")
 st.set_page_config(page_title=title, layout="wide")
-st.title(title)
+
+# サイドバーに言語選択を配置
+with st.sidebar:
+    lang = st.selectbox(
+        "Language / 言語",
+        options=["ja", "en"],
+        format_func=lambda x: "日本語" if x == "ja" else "English",
+        index=0,
+    )
+
+st.title(get_text("title", lang))
 st.divider()
 
-description = """
-[サマバケ！すくらんぶる](https://www.illgames.jp/product/svs/)のセーブデータのうち、キャラクターの特性を編集するツールです。
+st.markdown(get_text("description", lang))
 
-データ読み込み後、編集したい部分をダブルクリックすると値を選択することができます。
-
-**⚠️注意事項**: バグなどあるかもしれませんので、編集前のデータのバックアップはとっておきましょう!
-"""
-st.markdown(description)
-
-file = st.file_uploader("サマすくのセーブデータを選択")
+file = st.file_uploader(get_text("file_uploader", lang))
 if file is not None:
-
     try:
         svs = SVSSaveData.load(file.getvalue())
     except Exception as e:
-        st.error("ファイルの読み込みに失敗しました。未対応のファイルです。", icon="🚨")
+        st.error(get_text("error_load", lang), icon="🚨")
         st.stop()
-    st.success("正常にデータを読み込めました。", icon="✅")
+    st.success(get_text("success_load", lang), icon="✅")
 
     download = st.empty()
 
     categorical_columns = [
-        "job",               # 仕事
-        "sexualTarget",      # 性愛対象
-        "lvChastity",        # 貞操観念
-        "lvSociability",     # 社交性
-        "lvTalk",            # 話術
-        "lvStudy",           # 学力
-        "lvLiving",          # 生活
-        "lvPhysical",        # 体力
-        "lvDefeat",          # 貶し方
+        "job",  # 仕事
+        "sexualTarget",  # 性愛対象
+        "lvChastity",  # 貞操観念
+        "lvSociability",  # 社交性
+        "lvTalk",  # 話術
+        "lvStudy",  # 学力
+        "lvLiving",  # 生活
+        "lvPhysical",  # 体力
+        "lvDefeat",  # 貶し方
     ]
 
     categorical_labels = {
-        "job":           "仕事",
-        "sexualTarget":  "性愛対象",
-        "lvChastity":    "貞操観念",
+        "job": "仕事",
+        "sexualTarget": "性愛対象",
+        "lvChastity": "貞操観念",
         "lvSociability": "社交性",
-        "lvTalk":        "話術",
-        "lvStudy":       "学力",
-        "lvLiving":      "生活",
-        "lvPhysical":    "体力",
-        "lvDefeat":      "貶し方",
+        "lvTalk": "話術",
+        "lvStudy": "学力",
+        "lvLiving": "生活",
+        "lvPhysical": "体力",
+        "lvDefeat": "貶し方",
     }
 
     categorical_label_maps = {
@@ -452,14 +533,23 @@ if file is not None:
         },
     }
 
-    value_columns = list(categorical_labels.values()) + ["個性1", "個性2", "H特性1", "H特性2"]
+    value_columns = list(categorical_labels.values()) + [
+        "個性1",
+        "個性2",
+        "H特性1",
+        "H特性2",
+    ]
 
     rows = []
     for i, c in enumerate(svs.charas):
-        row = {"名前": f"{i}:{c["Parameter"]['lastname']} {c["Parameter"]['firstname']}"}
+        row = {
+            "名前": f"{i}:{c['Parameter']['lastname']} {c['Parameter']['firstname']}"
+        }
         row.update({k: c["GameParameter_SV"][k] for k in categorical_columns})
-        row["individuality"] = c["GameParameter_SV"]["individuality"]["answer"] # 特性 -> 個性
-        row["preferenceH"] = c["GameParameter_SV"]["preferenceH"]["answer"]     # H特性
+        row["individuality"] = c["GameParameter_SV"]["individuality"][
+            "answer"
+        ]  # 特性 -> 個性
+        row["preferenceH"] = c["GameParameter_SV"]["preferenceH"]["answer"]  # H特性
         rows.append(row)
 
     df_params = pd.DataFrame.from_dict(rows)
@@ -475,16 +565,26 @@ if file is not None:
     # streamlitでのUI装飾の設定
     categorical_column_configs = {}
     for k, v in categorical_label_maps.items():
-        categorical_column_configs[categorical_labels[k]] = st.column_config.SelectboxColumn(
-            categorical_labels[k],
-            options=[w for w in sorted(v.values(), key=lambda x: int(x.split(":")[0]))],
-            required=True
+        categorical_column_configs[categorical_labels[k]] = (
+            st.column_config.SelectboxColumn(
+                categorical_labels[k],
+                options=[
+                    w for w in sorted(v.values(), key=lambda x: int(x.split(":")[0]))
+                ],
+                required=True,
+            )
         )
 
     # ここから特性部分の設定
     # 特性は埋まってないこともあるのでNaNになる。その場合は-1として扱う。
-    df_params[["個性1", "個性2"]] = pd.DataFrame(df_params["individuality"].apply(lambda x: (x + [-1] * 2)[:2]).to_list(), index=df_params.index)
-    df_params[["H特性1", "H特性2"]] = pd.DataFrame(df_params["preferenceH"].apply(lambda x: (x + [-1] * 2)[:2]).to_list(), index=df_params.index)
+    df_params[["個性1", "個性2"]] = pd.DataFrame(
+        df_params["individuality"].apply(lambda x: (x + [-1] * 2)[:2]).to_list(),
+        index=df_params.index,
+    )
+    df_params[["H特性1", "H特性2"]] = pd.DataFrame(
+        df_params["preferenceH"].apply(lambda x: (x + [-1] * 2)[:2]).to_list(),
+        index=df_params.index,
+    )
     df_params.drop(["individuality", "preferenceH"], inplace=True, axis=1)
 
     # 0 -> "0:チョロイ" とかにする置換
@@ -500,13 +600,25 @@ if file is not None:
         if "個性" in m:
             trait_column_configs[m] = st.column_config.SelectboxColumn(
                 m,
-                options=[w for w in sorted(trait_label_maps["individuality"].values(), key=lambda x: int(x.split(":")[0]))],
+                options=[
+                    w
+                    for w in sorted(
+                        trait_label_maps["individuality"].values(),
+                        key=lambda x: int(x.split(":")[0]),
+                    )
+                ],
                 required=True,
             )
         else:
             trait_column_configs[m] = st.column_config.SelectboxColumn(
                 m,
-                options=[w for w in sorted(trait_label_maps["preferenceH"].values(), key=lambda x: int(x.split(":")[0]))],
+                options=[
+                    w
+                    for w in sorted(
+                        trait_label_maps["preferenceH"].values(),
+                        key=lambda x: int(x.split(":")[0]),
+                    )
+                ],
                 required=True,
             )
 
@@ -517,18 +629,30 @@ if file is not None:
         )
     }
 
-    column_configs = categorical_column_configs | trait_column_configs | name_column_configs
-    df_modified = st.data_editor(df_params, hide_index=True, column_config=column_configs)
+    column_configs = (
+        categorical_column_configs | trait_column_configs | name_column_configs
+    )
+    df_modified = st.data_editor(
+        df_params, hide_index=True, column_config=column_configs
+    )
 
     # 変更の反映
-    df_modified[value_columns] = df_modified[value_columns].apply(lambda col: col.map(lambda x: int(x.split(":")[0])))
+    df_modified[value_columns] = df_modified[value_columns].apply(
+        lambda col: col.map(lambda x: int(x.split(":")[0]))
+    )
 
     for _, row in df_modified.iterrows():
         i, name = row["名前"].split(":")
         for k, v in categorical_labels.items():
             svs.charas[int(i)]["GameParameter_SV"][k] = int(row[v])
 
-        svs.charas[int(i)]["GameParameter_SV"]["individuality"]["answer"] = list(set([x for x in row[["個性1", "個性2"]] if x != -1]))
-        svs.charas[int(i)]["GameParameter_SV"]["preferenceH"]["answer"] = list(set([x for x in row[["H特性1", "H特性2"]] if x != -1]))
+        svs.charas[int(i)]["GameParameter_SV"]["individuality"]["answer"] = list(
+            set([x for x in row[["個性1", "個性2"]] if x != -1])
+        )
+        svs.charas[int(i)]["GameParameter_SV"]["preferenceH"]["answer"] = list(
+            set([x for x in row[["H特性1", "H特性2"]] if x != -1])
+        )
 
-    download.download_button("改変後のセーブデータをダウンロード", bytes(svs), "modified.dat")
+    download.download_button(
+        get_text("download_button", lang), bytes(svs), "modified.dat"
+    )

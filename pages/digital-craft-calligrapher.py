@@ -1,16 +1,133 @@
-import streamlit as st
+import copy
 import io
 import json
 import struct
+import textwrap
+import uuid
 from pathlib import Path
 from typing import Any, BinaryIO, Dict, Union
-import uuid
-import textwrap
 
+import numpy as np
+import streamlit as st
 from kkloader.funcs import get_png, load_string, load_type, write_string
 from PIL import Image, ImageDraw, ImageFont
-import copy
-import numpy as np
+
+# ========================================
+# i18n対応: 多言語辞書
+# ========================================
+
+TRANSLATIONS = {
+    "ja": {
+        "title": "デジクラカリグラファー",
+        "subtitle": "テキストをデジタルクラフトのシーン内で平面を並べて再現します。ダウンロードしたシーンをインポートして使えます。",
+        "qa_title": "Q&A",
+        "qa_content": """
+#### 文字を入れると重い！
+
+**アンチエイリアス** をOFFにし、 **横方向の平面結合** を有効にすると最も平面の数が小さくなります。
+
+他にも **一文字あたり細かさ**を下げることで平面数が減りますが、文字の解像度が下がるので可読性も悪くなってしまいます。
+どうしても平面数を下げたければこのパラメータを調整していい塩梅を探してみてください。
+""",
+        "param_settings": "パラメータ設定",
+        "text_input": "テキスト",
+        "text_placeholder": "ここにテキストを入力",
+        "font_label": "フォント",
+        "color_label": "色",
+        "alpha_label": "色の透明度(マップ平面のみ有効)",
+        "text_size_title": "文字の大きさ",
+        "text_size_help": "文字の縦幅。0.1で一文字がキャラの手のひらほどの大きさ、1.7でキャラの身長ほどの大きさになります。",
+        "height_label": "縦幅",
+        "advanced_settings": "詳細設定",
+        "resolution_label": "一文字あたり細かさ",
+        "resolution_help": "文字のピクセルの細かさ。この値を大きくするほど文字が綺麗になる一方、シーンが重くなります",
+        "antialias_label": "アンチエイリアスを使う",
+        "antialias_color_label": "アンチエイリアスの色",
+        "merge_horizontal_label": "横方向の平面結合",
+        "merge_horizontal_help": "横方向に色が一致していれば長方形で代替し平面の数を大幅に減らします。1Pixelごといじりたいのであればこのチェックを外してください。",
+        "plane_size_label": "平面の大きさ",
+        "plane_size_help": "1.0が現在の大きさ。小さくすると文字がスカスカになります。ドット感のある文字の描写に使います。",
+        "plane_type_label": "使用する平面",
+        "plane_type_help": "マップの方の平面を使うか、キャラの方の平面を使うかを設定します。マップライトとキャラライトのどちらのライトに影響されるかが決まります。",
+        "plane_map": "平面(マップ)",
+        "plane_chara": "平面(キャラ)",
+        "light_cancel_label": "ライトの影響度",
+        "light_cancel_help": 'アイテム設定の"ライトの影響度"を一括設定します。1ほどライトを反射しやすく、0ほどライトを吸収しやすくなります。',
+        "generate_button": "シーンを生成",
+        "error_no_text": "テキストが入力されていません",
+        "generating": "シーンを生成中...",
+        "success_generate": "生成完了！ ({count} 個の平面)",
+        "preview_title": "プレビュー",
+        "original_image": "元のテキスト画像",
+        "pixel_data": "ピクセルデータ ({width}×{height})",
+        "scene_info_title": "シーン情報",
+        "plane_count": "平面数",
+        "plane_reduction": "平面削減",
+        "download_button": "シーンファイルをダウンロード",
+        "error_init": "アプリケーションの初期化に失敗しました:",
+        "error_occurred": "エラーが発生しました:",
+        "font_not_found": "フォントが見つかりません",
+        "default_font_used": "デフォルトフォントを使用しています",
+    },
+    "en": {
+        "title": "Digital Craft Calligrapher",
+        "subtitle": "Recreate text using planes arranged in a Digital Craft scene. Import the downloaded scene to use.",
+        "qa_title": "Q&A",
+        "qa_content": """
+#### It gets heavy when I add text!
+
+Turn **Antialiasing** OFF and enable **Horizontal plane merging** to minimize the number of planes.
+
+You can also reduce plane count by lowering **Resolution per character**, but this decreases text resolution and readability.
+If you must reduce plane count, adjust this parameter to find a good balance.
+""",
+        "param_settings": "Parameter Settings",
+        "text_input": "Text",
+        "text_placeholder": "Enter text here",
+        "font_label": "Font",
+        "color_label": "Color",
+        "alpha_label": "Color transparency (Map plane only)",
+        "text_size_title": "Text Size",
+        "text_size_help": "Text height. 0.1 is about the size of a character's palm, 1.7 is about character height.",
+        "height_label": "Height",
+        "advanced_settings": "Advanced Settings",
+        "resolution_label": "Resolution per character",
+        "resolution_help": "Pixel fineness of text. Higher values produce cleaner text but heavier scenes",
+        "antialias_label": "Use antialiasing",
+        "antialias_color_label": "Antialiasing color",
+        "merge_horizontal_label": "Horizontal plane merging",
+        "merge_horizontal_help": "Replaces matching horizontal colors with rectangles to greatly reduce plane count. Uncheck to edit per pixel.",
+        "plane_size_label": "Plane size",
+        "plane_size_help": "1.0 is current size. Smaller values make text sparse. Used for pixel-art style text.",
+        "plane_type_label": "Plane type to use",
+        "plane_type_help": "Choose whether to use map planes or character planes. This determines which light type affects them.",
+        "plane_map": "Plane (Map)",
+        "plane_chara": "Plane (Character)",
+        "light_cancel_label": "Light influence",
+        "light_cancel_help": 'Sets item "Light influence" setting. Higher values reflect light more, lower values absorb light more.',
+        "generate_button": "Generate Scene",
+        "error_no_text": "No text entered",
+        "generating": "Generating scene...",
+        "success_generate": "Generation complete! ({count} planes)",
+        "preview_title": "Preview",
+        "original_image": "Original text image",
+        "pixel_data": "Pixel data ({width}×{height})",
+        "scene_info_title": "Scene Info",
+        "plane_count": "Plane count",
+        "plane_reduction": "Plane reduction",
+        "download_button": "Download scene file",
+        "error_init": "Failed to initialize application:",
+        "error_occurred": "An error occurred:",
+        "font_not_found": "Font not found",
+        "default_font_used": "Using default font",
+    },
+}
+
+
+def get_text(key, lang="ja"):
+    """指定した言語のテキストを取得"""
+    return TRANSLATIONS.get(lang, TRANSLATIONS["ja"]).get(key, key)
+
 
 SPACING_RATIO = 0.2
 FONT_SIZE = 200
@@ -90,16 +207,18 @@ def build_preview_pixels(pixels, text_length):
     return np.concatenate(list(reversed(blocks)), axis=1)
 
 
-def render_preview(original_img, preview_pixels, grid_width, grid_height):
-    st.subheader("🖼️ プレビュー")
+def render_preview(original_img, preview_pixels, grid_width, grid_height, lang="ja"):
+    st.subheader(f"🖼️ {get_text('preview_title', lang)}")
     preview_col1, preview_col2 = st.columns(2)
 
     with preview_col1:
-        st.markdown("**元のテキスト画像**")
+        st.markdown(f"**{get_text('original_image', lang)}**")
         st.image(original_img, width="stretch")
 
     with preview_col2:
-        st.markdown(f"**ピクセルデータ ({grid_width}×{grid_height})**")
+        st.markdown(
+            f"**{get_text('pixel_data', lang).format(width=grid_width, height=grid_height)}**"
+        )
         preview_img = Image.fromarray(preview_pixels)
         scale = max(1, min(12, int(512 / max(1, preview_img.width))))
         preview_img = preview_img.resize(
@@ -109,18 +228,22 @@ def render_preview(original_img, preview_pixels, grid_width, grid_height):
         st.image(preview_img, width="content")
 
 
-def render_scene_info(scene, plane_count, raw_plane_count):
-    st.subheader("📝 シーン情報")
+def render_scene_info(scene, plane_count, raw_plane_count, lang="ja"):
+    st.subheader(f"📝 {get_text('scene_info_title', lang)}")
     info_col1, info_col2 = st.columns(2)
     with info_col1:
-        st.metric("平面数", f"{plane_count}")
+        st.metric(get_text("plane_count", lang), f"{plane_count}")
     with info_col2:
         if raw_plane_count is not None:
             delta = raw_plane_count - plane_count
             delta_text = f"-{delta}" if delta >= 0 else f"+{abs(delta)}"
-            st.metric("平面削減", delta_text, f"{plane_count}/{raw_plane_count}")
+            st.metric(
+                get_text("plane_reduction", lang),
+                delta_text,
+                f"{plane_count}/{raw_plane_count}",
+            )
         else:
-            st.metric("平面削減", "-", "-")
+            st.metric(get_text("plane_reduction", lang), "-", "-")
 
 
 def build_scene_filename(text_input):
@@ -712,12 +835,20 @@ class HoneycomeSceneDataSimple:
 # Streamlit App
 # ============================
 # ページ設定
-st.set_page_config(page_title="デジクラカリグラファー", page_icon="✨", layout="wide")
+title = get_text("title", "ja")
+st.set_page_config(page_title=title, page_icon="✨", layout="wide")
 
-st.title("✨ デジクラカリグラファー")
-st.markdown(
-    "テキストをデジタルクラフトのシーン内で平面を並べて再現します。ダウンロードしたシーンをインポートして使えます。"
-)
+# サイドバーに言語選択を配置
+with st.sidebar:
+    lang = st.selectbox(
+        "Language / 言語",
+        options=["ja", "en"],
+        format_func=lambda x: "日本語" if x == "ja" else "English",
+        index=0,
+    )
+
+st.title(f"✨ {get_text('title', lang)}")
+st.markdown(get_text("subtitle", lang))
 
 
 # セッション状態の初期化
@@ -1071,34 +1202,26 @@ try:
     if template_scene is None:
         st.stop()
 
-    with st.expander("❓ Q&A", expanded=False):
-        st.markdown(
-            textwrap.dedent(
-                """
-                #### 文字を入れると重い！
-
-                **アンチエイリアス** をOFFにし、 **横方向の平面結合** を有効にすると最も平面の数が小さくなります。
-
-                他にも **一文字あたり細かさ**を下げることで平面数が減りますが、文字の解像度が下がるので可読性も悪くなってしまいます。
-                どうしても平面数を下げたければこのパラメータを調整していい塩梅を探してみてください。
-                """
-            ).strip()
-        )
+    with st.expander(f"❓ {get_text('qa_title', lang)}", expanded=False):
+        st.markdown(get_text("qa_content", lang).strip())
 
     # メインページでパラメータ設定
-    st.header("⚙️ パラメータ設定")
+    st.header(f"⚙️ {get_text('param_settings', lang)}")
 
     # テキスト入力
     text_input = st.text_input(
-        "📝 テキスト", value="", max_chars=50, placeholder="ここにテキストを入力"
+        f"📝 {get_text('text_input', lang)}",
+        value="",
+        max_chars=50,
+        placeholder=get_text("text_placeholder", lang),
     )
     available_fonts = list_available_fonts()
     selected_font = select_font_option(available_fonts, "MPLUSRounded1c-Regular.ttf")
 
     # 色設定
-    color_hex = st.color_picker("色", value="#FFFFFF")
+    color_hex = st.color_picker(get_text("color_label", lang), value="#FFFFFF")
     color_alpha = st.slider(
-        "色の透明度(マップ平面のみ有効)",
+        get_text("alpha_label", lang),
         min_value=0.0,
         max_value=1.0,
         value=1.0,
@@ -1107,62 +1230,68 @@ try:
     st.markdown("---")
 
     # 文字の大きさ（縦幅）
-    st.subheader("📏 文字の大きさ")
-    st.text(
-        "文字の縦幅。0.1で一文字がキャラの手のひらほどの大きさ、1.7でキャラの身長ほどの大きさになります。"
+    st.subheader(f"📏 {get_text('text_size_title', lang)}")
+    st.text(get_text("text_size_help", lang))
+    text_height = st.slider(
+        get_text("height_label", lang),
+        min_value=0.1,
+        max_value=2.0,
+        value=0.5,
+        step=0.05,
     )
-    text_height = st.slider("縦幅", min_value=0.1, max_value=2.0, value=0.5, step=0.05)
 
     st.markdown("---")
 
     # 詳細設定（エキスパンダーで折りたたみ）
-    with st.expander("🎨 詳細設定", expanded=False):
+    with st.expander(f"🎨 {get_text('advanced_settings', lang)}", expanded=False):
         col1, col2 = st.columns(2)
 
         with col1:
             # 1文字あたりの解像度設定
             per_char_resolution = st.slider(
-                "一文字あたり細かさ",
+                get_text("resolution_label", lang),
                 min_value=10,
                 max_value=200,
                 value=100,
                 step=5,
-                help="文字のピクセルの細かさ。この値を大きくするほど文字が綺麗になる一方、シーンが重くなります",
+                help=get_text("resolution_help", lang),
             )
             font_size = FONT_SIZE
 
         with col2:
             threshold = 1
 
-        antialias = st.checkbox("アンチエイリアスを使う", value=True)
-        edge_color_hex = st.color_picker("アンチエイリアスの色", value="#000000")
+        antialias = st.checkbox(get_text("antialias_label", lang), value=True)
+        edge_color_hex = st.color_picker(
+            get_text("antialias_color_label", lang), value="#000000"
+        )
         merge_horizontal = st.checkbox(
-            "横方向の平面結合",
+            get_text("merge_horizontal_label", lang),
             value=True,
-            help="横方向に色が一致していれば長方形で代替し平面の数を大幅に減らします。1Pixelごといじりたいのであればこのチェックを外してください。",
+            help=get_text("merge_horizontal_help", lang),
         )
         merge_color_threshold = 0.0
         plane_size_factor = st.slider(
-            "平面の大きさ",
+            get_text("plane_size_label", lang),
             min_value=0.5,
             max_value=1.0,
             value=1.0,
             step=0.05,
-            help="1.0が現在の大きさ。小さくすると文字がスカスカになります。ドット感のある文字の描写に使います。",
+            help=get_text("plane_size_help", lang),
         )
         plane_preset = st.selectbox(
-            "使用する平面",
-            options=["平面(マップ)", "平面(キャラ)"],
+            get_text("plane_type_label", lang),
+            options=[get_text("plane_map", lang), get_text("plane_chara", lang)],
             index=0,
-            help="マップの方の平面を使うか、キャラの方の平面を使うかを設定します。マップライトとキャラライトのどちらのライトに影響されるかが決まります。",
+            help=get_text("plane_type_help", lang),
         )
         light_cancel = st.slider(
-            "ライトの影響度",
+            get_text("light_cancel_label", lang),
             min_value=0.0,
             max_value=1.0,
             value=1.0,
             step=0.05,
-            help='アイテム設定の"ライトの影響度"を一括設定します。1ほどライトを反射しやすく、0ほどライトを吸収しやすくなります。',
+            help=get_text("light_cancel_help", lang),
         )
 
     layout = compute_layout(
@@ -1170,19 +1299,27 @@ try:
     )
 
     # 生成ボタン
-    generate_button = st.button("🚀 シーンを生成", type="primary", width="stretch")
+    generate_button = st.button(
+        f"🚀 {get_text('generate_button', lang)}", type="primary", width="stretch"
+    )
 
     # 生成処理
     if generate_button:
         if not text_input:
-            st.error("テキストが入力されていません")
+            st.error(get_text("error_no_text", lang))
         else:
-            with st.spinner("シーンを生成中..."):
+            with st.spinner(get_text("generating", lang)):
                 try:
                     color = hex_to_color(color_hex)
                     color["a"] = color_alpha
                     edge_color = hex_to_color(edge_color_hex)
-                    plane_settings = PLANE_PRESETS[plane_preset]
+                    # plane_preset は言語によって変わるので、インデックスで判定
+                    plane_preset_key = (
+                        "平面(マップ)"
+                        if plane_preset == get_text("plane_map", lang)
+                        else "平面(キャラ)"
+                    )
+                    plane_settings = PLANE_PRESETS[plane_preset_key]
 
                     scene, original_img, pixels, plane_count, raw_plane_count = (
                         generate_text_scene(
@@ -1214,7 +1351,9 @@ try:
                         )
                     )
 
-                    st.success(f"✅ 生成完了！ ({plane_count} 個の平面)")
+                    st.success(
+                        f"✅ {get_text('success_generate', lang).format(count=plane_count)}"
+                    )
 
                     preview_pixels = build_preview_pixels(pixels, len(text_input))
                     render_preview(
@@ -1222,8 +1361,9 @@ try:
                         preview_pixels,
                         layout["grid_width"],
                         layout["grid_height"],
+                        lang,
                     )
-                    render_scene_info(scene, plane_count, raw_plane_count)
+                    render_scene_info(scene, plane_count, raw_plane_count, lang)
 
                     # ダウンロードボタン
                     filename = build_scene_filename(text_input)
@@ -1235,7 +1375,7 @@ try:
                     scene_bytes = bytes(scene)
 
                     st.download_button(
-                        label="💾 シーンファイルをダウンロード",
+                        label=f"💾 {get_text('download_button', lang)}",
                         data=scene_bytes,
                         file_name=filename,
                         mime="image/png",
@@ -1244,10 +1384,10 @@ try:
                     )
 
                 except Exception as e:
-                    st.error(f"エラーが発生しました: {str(e)}")
+                    st.error(f"{get_text('error_occurred', lang)} {str(e)}")
                     st.exception(e)
 
 
 except Exception as e:
-    st.error(f"アプリケーションの初期化に失敗しました: {str(e)}")
+    st.error(f"{get_text('error_init', lang)} {str(e)}")
     st.exception(e)

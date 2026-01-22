@@ -1,21 +1,103 @@
-import struct
 import io
+import struct
+
+import networkx as nx
 import numpy as np
 import pandas as pd
 import streamlit as st
-import networkx as nx
-from pyvis.network import Network
-from msgpack import packb, unpackb
 import streamlit.components.v1 as components
-
 from kkloader import SummerVacationCharaData as svcd
+from msgpack import packb, unpackb
+from pyvis.network import Network
+
+# ========================================
+# i18n対応: 多言語辞書
+# ========================================
+
+TRANSLATIONS = {
+    "ja": {
+        "title": "サマすく行動ログビューア",
+        "description": "[サマバケ！すくらんぶる](https://www.illgames.jp/product/svs/)のセーブデータに残っている行動ログを表示するツールです。",
+        "expander_title": "表示についての詳しい説明はこちらをクリック",
+        "expander_content": """
+行列は行のキャラ→列のキャラ向けで行動があったことを示しています。例えば、
+|           | 青山 祐樹 | 天宮 心音 |
+| --------- | --------- | --------- |
+| パル      | 0         | 1         |
+| 川澄 結衣 | 0         | 0         |
+
+のような結果が得られた場合は「パル」が「天宮 心音」に行動をとったということになります。
+""",
+        "file_uploader": "サマすくのセーブデータを選択",
+        "error_load": "ファイルの読み込みに失敗しました。未対応のファイルです。",
+        "success_load": "正常にデータを読み込めました。",
+        "single_chara_warning": "このデータにはキャラクターが一人しか登録されていないようです。",
+        "tab_sexual_graph": "性的関係グラフ",
+        "tab_sexual_log": "性的関係ログ",
+        "tab_emotion_graph": "感情グラフ",
+        "tab_emotion": "感情値",
+        "tab_command": "コマンドログ",
+        "select_command": "表示するコマンドを選択:",
+        "select_sexual_action": "表示する行動を選択:",
+        "select_graph_action": "グラフを表示する行動を選択:",
+        "select_emotion": "表示する感情を選択:",
+        "select_emotion_graph": "グラフを表示する感情を選択:",
+        "graph_help": "グラフが見えない場合は、表示位置がずれている可能性があります。その場合は右下の - + の上のボタンを押してみてください。",
+        "emotion_graph_help": "このグラフでは`0`から`30`まである感情値を4段階で表しています。値が大きいほど線は太くなります。",
+        "none_caption": "`None` は一度もその行動が行われなかったことを表し、`0` は行動が行われたものの違った返答となったことを表します。",
+        "action_success": "行動成功",
+        "action_fail": "行動失敗",
+        "action_ambiguous": "あいまい返答",
+    },
+    "en": {
+        "title": "Summer Vacation Action Log Viewer",
+        "description": "A tool to display action logs saved in [Summer Vacation Scramble](https://www.illgames.jp/product/svs/) save data.",
+        "expander_title": "Click here for detailed explanation",
+        "expander_content": """
+The matrix shows actions from row character → column character. For example,
+|           | Aoyama Yuki | Amamiya Kokone |
+| --------- | ----------- | -------------- |
+| Pal       | 0           | 1              |
+| Kawasumi Yui | 0        | 0              |
+
+This result indicates that "Pal" took action toward "Amamiya Kokone".
+""",
+        "file_uploader": "Select Summer Vacation save data",
+        "error_load": "Failed to load file. Unsupported file format.",
+        "success_load": "Data loaded successfully.",
+        "single_chara_warning": "This data only has one character registered.",
+        "tab_sexual_graph": "Sexual Relationship Graph",
+        "tab_sexual_log": "Sexual Relationship Log",
+        "tab_emotion_graph": "Emotion Graph",
+        "tab_emotion": "Emotion Values",
+        "tab_command": "Command Log",
+        "select_command": "Select command to display:",
+        "select_sexual_action": "Select action to display:",
+        "select_graph_action": "Select action to display in graph:",
+        "select_emotion": "Select emotion to display:",
+        "select_emotion_graph": "Select emotion to display in graph:",
+        "graph_help": "If the graph is not visible, the display position may be offset. Try clicking the button above the - + in the lower right.",
+        "emotion_graph_help": "This graph represents emotion values from 0 to 30 in 4 levels. Thicker lines indicate higher values.",
+        "none_caption": "`None` indicates the action was never performed, `0` indicates the action was performed but received a different response.",
+        "action_success": "Action Success",
+        "action_fail": "Action Failed",
+        "action_ambiguous": "Ambiguous Response",
+    },
+}
+
+
+def get_text(key, lang="ja"):
+    """指定した言語のテキストを取得"""
+    return TRANSLATIONS.get(lang, TRANSLATIONS["ja"]).get(key, key)
 
 
 ############################################
 # データ読み込み用関数(funcs.pyからコピペ)
 ############################################
 def load_length(data_stream, struct_type):
-    length = struct.unpack(struct_type, data_stream.read(struct.calcsize(struct_type)))[0]
+    length = struct.unpack(struct_type, data_stream.read(struct.calcsize(struct_type)))[
+        0
+    ]
     return data_stream.read(length)
 
 
@@ -86,9 +168,13 @@ class SVSSaveData:
 
         svs.names = {}
         for c, d in zip(svs.charas, svs.chara_details):
-            svs.names[d["charasGameParam"]["Index"]] = f"{c['Parameter']['lastname']} {c['Parameter']['firstname']}"
+            svs.names[d["charasGameParam"]["Index"]] = (
+                f"{c['Parameter']['lastname']} {c['Parameter']['firstname']}"
+            )
 
-        svs.index_to_array = {x["charasGameParam"]["Index"]: i for i, x in enumerate(svs.chara_details)}
+        svs.index_to_array = {
+            x["charasGameParam"]["Index"]: i for i, x in enumerate(svs.chara_details)
+        }
 
         return svs
 
@@ -105,7 +191,7 @@ class SVSSaveData:
 
         # セーブデータの先頭からプレイヤーキャラ部分までのオフセットを計算したい
         # メタ部分の長さ + メタ部分の長さの数字(4byte) + データ全長の数字(8byte) + キャラ数の数字(4byte)
-        player_offset += len(meta_b) + 4 + 8 + 4 
+        player_offset += len(meta_b) + 4 + 8 + 4
         player_offset_b = qpack(player_offset)
 
         data_length = len(meta_b) + len(chara_byte) + 4 + 8 + 4
@@ -134,20 +220,19 @@ class SVSSaveData:
 
         chara_bytes = []
         for chara, chara_detail in zip(self.charas, self.chara_details):
-            chara_detail_b, chara_detail_i = msg_pack(chara_detail) 
+            chara_detail_b, chara_detail_i = msg_pack(chara_detail)
             chara_detail_i_b = ipack.pack(chara_detail_i)
             chara_b = bytes(chara)
 
             # キャラクターデータの長さを整数値に変換
-            chara_length = sum(map(lambda x: len(x), [chara_detail_i_b, chara_detail_b, chara_b]))
+            chara_length = sum(
+                map(lambda x: len(x), [chara_detail_i_b, chara_detail_b, chara_b])
+            )
             chara_length_b = ipack.pack(chara_length)
 
-            chara_byte = b"".join([
-                chara_length_b,
-                chara_detail_i_b,
-                chara_detail_b,
-                chara_b
-            ])
+            chara_byte = b"".join(
+                [chara_length_b, chara_detail_i_b, chara_detail_b, chara_b]
+            )
 
             if chara_detail["charasGameParam"]["isPC"]:
                 after_player = True
@@ -165,7 +250,9 @@ class SVSSaveData:
             f.write(bytes(self))
 
     # 二者間の交流のログを隣接行列として取得する
-    def generate_memory_matrix(self, command: int = 0, active: bool = True, decision: str = "yes"):
+    def generate_memory_matrix(
+        self, command: int = 0, active: bool = True, decision: str = "yes"
+    ):
         interract = "activeCommand" if active else "passiveCommand"
 
         assert interract in ["activeCommand", "passiveCommand"]
@@ -173,17 +260,17 @@ class SVSSaveData:
 
         rows = {}
         for c in self.chara_details:
-
             from_index = c["charasGameParam"]["Index"]
             row = {}
             table = c["charasGameParam"]["memory"][interract]["DeadTable"]
 
             for d in self.chara_details:
-
                 to_index = d["charasGameParam"]["Index"]
 
                 if to_index in table and command in table[to_index]["save"]["infos"]:
-                    value = table[to_index]["save"]["infos"][command]["countInfo"][decision]
+                    value = table[to_index]["save"]["infos"][command]["countInfo"][
+                        decision
+                    ]
                 else:
                     value = None
 
@@ -192,19 +279,17 @@ class SVSSaveData:
             rows[f"{from_index}:{self.names[from_index]}"] = row
 
         df = pd.DataFrame.from_dict(rows).T
-        sorted_columns = sorted(df.columns, key=lambda x: int(x.split(':')[0]))
+        sorted_columns = sorted(df.columns, key=lambda x: int(x.split(":")[0]))
         df = df[sorted_columns]
-        sorted_index = sorted(df.index, key=lambda x: int(x.split(':')[0]))
+        sorted_index = sorted(df.index, key=lambda x: int(x.split(":")[0]))
         df = df.loc[sorted_index]
 
         return df
 
     # 二者間の性的な関係のログの隣接行列
     def generate_sexual_memory_matrix(self, command):
-
         rows = {}
         for c in self.chara_details:
-
             from_index = c["charasGameParam"]["Index"]
             row = {}
             table = c["charasGameParam"]["memory"]["pairTable"]
@@ -219,16 +304,15 @@ class SVSSaveData:
             rows[f"{from_index}:{self.names[from_index]}"] = row
 
         df = pd.DataFrame.from_dict(rows).T
-        sorted_columns = sorted(df.columns, key=lambda x: int(x.split(':')[0]))
+        sorted_columns = sorted(df.columns, key=lambda x: int(x.split(":")[0]))
         df = df[sorted_columns]
-        sorted_index = sorted(df.index, key=lambda x: int(x.split(':')[0]))
+        sorted_index = sorted(df.index, key=lambda x: int(x.split(":")[0]))
         df = df.loc[sorted_index]
 
         return df
 
     # 二者の感情を表す値の行列を取得
     def generate_emotion_matrix(self, emotion=0):
-
         assert emotion in [0, 1, 2, 3]
 
         rows = {}
@@ -250,9 +334,9 @@ class SVSSaveData:
             rows[f"{from_index}:{self.names[from_index]}"] = row
 
         df = pd.DataFrame.from_dict(rows).T
-        sorted_columns = sorted(df.columns, key=lambda x: int(x.split(':')[0]))
+        sorted_columns = sorted(df.columns, key=lambda x: int(x.split(":")[0]))
         df = df[sorted_columns]
-        sorted_index = sorted(df.index, key=lambda x: int(x.split(':')[0]))
+        sorted_index = sorted(df.index, key=lambda x: int(x.split(":")[0]))
         df = df.loc[sorted_index]
 
         return df.map(lambda x: x[emotion])
@@ -261,38 +345,47 @@ class SVSSaveData:
 ############################################
 # Streamlitのロジック部分
 ############################################
-title = "サマすく行動ログビューア"
+# ページ設定とタイトル
+title = get_text("title", "ja")
 st.set_page_config(page_title=title, layout="wide")
-st.title(title)
-st.write("[サマバケ！すくらんぶる](https://www.illgames.jp/product/svs/)のセーブデータに残っている行動ログを表示するツールです。")
 
-with st.expander("表示についての詳しい説明はこちらをクリック"):
-    description = """
-    行列は行のキャラ→列のキャラ向けで行動があったことを示しています。例えば、
-    |           | 青山 祐樹 | 天宮 心音 | 
-    | --------- | --------- | --------- | 
-    | パル      | 0         | 1         | 
-    | 川澄 結衣 | 0         | 0         | 
+# サイドバーに言語選択を配置
+with st.sidebar:
+    lang = st.selectbox(
+        "Language / 言語",
+        options=["ja", "en"],
+        format_func=lambda x: "日本語" if x == "ja" else "English",
+        index=0,
+    )
 
-    のような結果が得られた場合は「パル」が「天宮 心音」に行動をとったということになります。
-    """
-    st.markdown(description)
+st.title(get_text("title", lang))
+st.write(get_text("description", lang))
 
-file = st.file_uploader("サマすくのセーブデータを選択")
+with st.expander(get_text("expander_title", lang)):
+    st.markdown(get_text("expander_content", lang))
+
+file = st.file_uploader(get_text("file_uploader", lang))
 if file is not None:
-
     try:
         svs = SVSSaveData.load(file.getvalue())
     except Exception as e:
-        st.error("ファイルの読み込みに失敗しました。未対応のファイルです。", icon="🚨")
+        st.error(get_text("error_load", lang), icon="🚨")
         st.stop()
-    st.success("正常にデータを読み込めました。", icon="✅")
+    st.success(get_text("success_load", lang), icon="✅")
 
     if len(svs.charas) == 1:
-        st.write("このデータにはキャラクターが一人しか登録されていないようです。")
+        st.write(get_text("single_chara_warning", lang))
         st.stop()
 
-    tab_graph, tab_sexual, tab_emotion_graph, tab_emotion, tab_command = st.tabs(["性的関係グラフ", "性的関係ログ", "感情グラフ", "感情値", "コマンドログ"])
+    tab_graph, tab_sexual, tab_emotion_graph, tab_emotion, tab_command = st.tabs(
+        [
+            get_text("tab_sexual_graph", lang),
+            get_text("tab_sexual_log", lang),
+            get_text("tab_emotion_graph", lang),
+            get_text("tab_emotion", lang),
+            get_text("tab_command", lang),
+        ]
+    )
 
     with tab_command:
         commands = {
@@ -357,7 +450,7 @@ if file is not None:
             80: "80:アレを見せてほしい",
             81: "81:抱かせてほしい",
             82: "82:解放してあげる",
-            9: "9:解放してほしい", # これだけインデックスが離れているがこれで正しい
+            9: "9:解放してほしい",  # これだけインデックスが離れているがこれで正しい
             # ログには残っている
             71: "71:?",
             72: "72:?",
@@ -369,25 +462,30 @@ if file is not None:
         }
 
         option = st.selectbox(
-            "表示するコマンドを選択:",
+            get_text("select_command", lang),
             [v for v in sorted(commands.values(), key=lambda x: int(x.split(":")[0]))],
         )
         selected_command = int(option.split(":")[0])
-        df_relations_yes = svs.generate_memory_matrix(command=selected_command, active=True, decision="yes")
-        df_relations_no = svs.generate_memory_matrix(command=selected_command, active=True, decision="no")
-        df_relations_ambiguous = svs.generate_memory_matrix(command=selected_command, active=True, decision="ambiguous")
+        df_relations_yes = svs.generate_memory_matrix(
+            command=selected_command, active=True, decision="yes"
+        )
+        df_relations_no = svs.generate_memory_matrix(
+            command=selected_command, active=True, decision="no"
+        )
+        df_relations_ambiguous = svs.generate_memory_matrix(
+            command=selected_command, active=True, decision="ambiguous"
+        )
 
-        st.caption("`None` は一度もその行動が行われなかったことを表し、`0` は行動が行われたものの違った返答となったことを表します。")
+        st.caption(get_text("none_caption", lang))
 
-        st.write("### 行動成功")
+        st.write(f"### {get_text('action_success', lang)}")
         st.dataframe(df_relations_yes)
-        st.write("### 行動失敗")
+        st.write(f"### {get_text('action_fail', lang)}")
         st.dataframe(df_relations_no)
-        st.write("### あいまい返答")
+        st.write(f"### {get_text('action_ambiguous', lang)}")
         st.dataframe(df_relations_ambiguous)
 
     with tab_sexual:
-
         sexual_commands = {
             "totalH": "totalH:総エッチ回数",
             "caress": "caress:愛撫行為回数",
@@ -399,36 +497,41 @@ if file is not None:
         }
 
         sexual_command_option = st.selectbox(
-            "表示する行動を選択:",
+            get_text("select_sexual_action", lang),
             [v for v in sorted(sexual_commands.values())],
         )
         selected_sexual_command = sexual_command_option.split(":")[0]
 
-        df_relations = svs.generate_sexual_memory_matrix(command=selected_sexual_command)
+        df_relations = svs.generate_sexual_memory_matrix(
+            command=selected_sexual_command
+        )
         df_relations = df_relations.replace(0, np.nan)
 
         st.dataframe(df_relations)
 
     with tab_graph:
-
         graph_option = st.selectbox(
-            "グラフを表示する行動を選択:",
+            get_text("select_graph_action", lang),
             [v for v in sorted(sexual_commands.values())],
             index=6,
         )
         selected_command_graph = graph_option.split(":")[0]
 
-        st.caption("グラフが見えない場合は、表示位置がずれている可能性があります。その場合は右下の - + の上のボタンを押してみてください。")
+        st.caption(get_text("graph_help", lang))
 
         gender = {}
         for c, cd in zip(svs.charas, svs.chara_details):
-            index = cd['charasGameParam']['Index']
+            index = cd["charasGameParam"]["Index"]
             name = f"{c['Parameter']['lastname']} {c['Parameter']['firstname']}"
             gender[f"{index}:{name}"] = c["Parameter"]["sex"]
 
-        df_sexual_relations = svs.generate_sexual_memory_matrix(command=selected_command_graph)
+        df_sexual_relations = svs.generate_sexual_memory_matrix(
+            command=selected_command_graph
+        )
 
-        sorted_columns = sorted(df_sexual_relations.columns, key=lambda x: int(x.split(':')[0]))
+        sorted_columns = sorted(
+            df_sexual_relations.columns, key=lambda x: int(x.split(":")[0])
+        )
         df_sexual_relations = df_sexual_relations[sorted_columns]
         df_sexual_relations = df_sexual_relations.fillna(0)
 
@@ -436,18 +539,20 @@ if file is not None:
         G = nx.from_pandas_adjacency(df_sexual_relations, create_using=nx.DiGraph())
 
         if selected_command_graph == "finish":
-            net = Network(cdn_resources="in_line", height="600px", width="100%", directed=True)
+            net = Network(
+                cdn_resources="in_line", height="600px", width="100%", directed=True
+            )
         else:
             net = Network(cdn_resources="in_line", height="600px", width="100%")
 
         net.from_nx(G)
         for node in net.nodes:
             if gender[node["label"]] == 0:
-                node['color'] = "#4f55ff"
+                node["color"] = "#4f55ff"
             else:
-                node['color'] = "#ff8080"
+                node["color"] = "#ff8080"
         for edge in net.edges:
-            edge['color'] = "#4B4B4B"
+            edge["color"] = "#4B4B4B"
 
         net.set_options("""
             var options = {
@@ -460,7 +565,6 @@ if file is not None:
         components.html(html, height=610)
 
     with tab_emotion:
-
         emotions = {
             0: "0:愛情値",
             1: "1:友情値",
@@ -469,7 +573,7 @@ if file is not None:
         }
 
         emotion_option = st.selectbox(
-            "表示する感情を選択:",
+            get_text("select_emotion", lang),
             [v for v in sorted(emotions.values())],
         )
         selected_emotion = int(emotion_option.split(":")[0])
@@ -479,20 +583,19 @@ if file is not None:
         st.dataframe(df_emotion)
 
     with tab_emotion_graph:
-
         emotion_graph_option = st.selectbox(
-            "グラフを表示する感情を選択:",
+            get_text("select_emotion_graph", lang),
             [v for v in sorted(emotions.values())],
             index=0,
         )
         selected_emotion_graph = int(emotion_graph_option.split(":")[0])
 
-        st.caption("グラフが見えない場合は、表示位置がずれている可能性があります。その場合は右下の - + の上のボタンを押してみてください。")
-        st.caption("このグラフでは`0`から`30`まである感情値を4段階で表しています。値が大きいほど線は太くなります。")
+        st.caption(get_text("graph_help", lang))
+        st.caption(get_text("emotion_graph_help", lang))
 
         gender = {}
         for c, cd in zip(svs.charas, svs.chara_details):
-            index = cd['charasGameParam']['Index']
+            index = cd["charasGameParam"]["Index"]
             name = f"{c['Parameter']['lastname']} {c['Parameter']['firstname']}"
             gender[f"{index}:{name}"] = c["Parameter"]["sex"]
 
@@ -500,18 +603,22 @@ if file is not None:
         df_emotion_graph = df_emotion_graph // 7.5
 
         # グラフの作成
-        G_emotion = nx.from_pandas_adjacency(df_emotion_graph, create_using=nx.DiGraph())
+        G_emotion = nx.from_pandas_adjacency(
+            df_emotion_graph, create_using=nx.DiGraph()
+        )
 
-        net_emotion = Network(cdn_resources="in_line", height="600px", width="100%", directed=True)
+        net_emotion = Network(
+            cdn_resources="in_line", height="600px", width="100%", directed=True
+        )
 
         net_emotion.from_nx(G_emotion)
         for node in net_emotion.nodes:
             if gender[node["label"]] == 0:
-                node['color'] = "#4f55ff"
+                node["color"] = "#4f55ff"
             else:
-                node['color'] = "#ff8080"
+                node["color"] = "#ff8080"
         for edge in net_emotion.edges:
-            edge['color'] = "#4B4B4B"
+            edge["color"] = "#4B4B4B"
 
         net_emotion.set_options("""
             var options = {
