@@ -54,6 +54,7 @@ illusion/ILLGAMESのキャラ画像に含まれている色々なデータを一
 | About            | キャラクターの作者のIDとキャラデータ自体のIDが入っています。                                   |
 | Gameparameter_* | "綺麗好き"や"一目惚れ"などのキャラクターのメンタルの設定値です。                               |
 | Gameinfo_*      | ゲーム中のステータス(隷属や好感など)が保存されています。                                       |
+| KKEx             | modの設定情報が格納される場所です。                                                            |
 """,
         "file_uploader": "コイカツ/サマすく/ハニカムのキャラ画像を選択",
         "error_load": "ファイルの読み込みに失敗しました。未対応のファイルです。",
@@ -93,6 +94,7 @@ Please consider the following as a reference only.
 | About            | Contains the creator's ID and the character data ID.                                            |
 | Gameparameter_* | Mental settings like "neat freak" or "love at first sight".                                     |
 | Gameinfo_*      | In-game status (slavery, affection, etc.) is saved here.                                        |
+| KKEx             | Storage location for mod configuration data.                                                    |
 """,
         "file_uploader": "Select a character image (Koikatsu/Summer Vacation/Honey Come)",
         "error_load": "Failed to load file. Unsupported file format.",
