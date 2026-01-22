@@ -100,7 +100,7 @@ class SVSSaveData:
             data_stream = filelike
 
         else:
-            ValueError("unsupported input. type:{}".format(type(filelike)))
+            raise ValueError("unsupported input. type:{}".format(type(filelike)))
 
         # セーブデータのメタ情報
         svs.meta = msg_unpack(load_length(data_stream, "<I"))

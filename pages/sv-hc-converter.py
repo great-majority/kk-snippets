@@ -119,7 +119,7 @@ class KoikatuCharaHeader:
             data_stream = filelike
 
         else:
-            ValueError("unsupported input. type:{}".format(type(filelike)))
+            raise ValueError("unsupported input. type:{}".format(type(filelike)))
 
         kch.image = None
         if contains_png:
