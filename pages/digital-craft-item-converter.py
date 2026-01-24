@@ -9,19 +9,36 @@ from kkloader import HoneycomeSceneData
 
 TRANSLATIONS = {
     "ja": {
-        "title": "デジクラアイテム変換ツール",
-        "subtitle": "シーンデータ内のプレーンアイテムをマップ/キャラ間で変換します。",
+        "title": "デジクラ基本形アイテム変換ツール",
+        "subtitle": "シーンデータ内の基本形アイテム(平面とか)をマップ/キャラ間で変換します。\nどちらのライトで当てたいかを選択できるようになります。",
         "usage_title": "使い方",
         "usage_content": """
 1. デジタルクラフトのシーンデータ（.png）をアップロードします
-2. トップレベルのフォルダから変換対象を選択します
+2. フォルダの選択方法を選びます:
+   - **最上位フォルダから選択**: トップレベルのフォルダから1つ選択
+   - **文字列パターンで選択**: 入力した文字列を含むフォルダをすべて選択
 3. 変換先（マップライト or キャラライト）を選択します
 4. 「変換を実行」ボタンをクリックします
 5. 変換済みファイルをダウンロードします
 
+**パターン検索の例:**
+
+「家具」と入力した場合、以下のように該当フォルダが再帰的に選択されます:
+```
+ワークスペース
+├── 部屋A
+│   ├── 家具_テーブル ← ✓ マッチ
+│   ├── 家具_椅子 ← ✓ マッチ
+│   └── 照明
+├── 部屋B
+│   ├── 家具_ソファ ← ✓ マッチ
+│   └── カーテン
+└── 外装
+    └── 植物
+```
+
 **注意:**
 - シーンのタイトル名に変換先にした"(マップ)"か"(キャラ)"がつきます
-- 処理を軽くするため、ワークスペースの最も階層が上のフォルダのみ選択できるようになってます
 - 選択したフォルダ以下のすべてのサブフォルダ内のアイテムも再帰的に変換されます
 """,
         "file_uploader": "シーンデータ（PNG）をアップロード",
@@ -29,8 +46,15 @@ TRANSLATIONS = {
         "success_load": "シーンデータを読み込みました:",
         "warning_no_folders": "トップレベルにフォルダが見つかりませんでした。",
         "folder_selection_title": "フォルダ選択",
+        "folder_selection_mode": "選択方法",
+        "mode_dropdown": "最上位フォルダから選択",
+        "mode_pattern": "文字列パターンで選択",
         "folder_selection_label": "変換対象のフォルダを選択",
         "folder_selection_help": "選択したフォルダ以下のすべてのアイテムが変換されます",
+        "pattern_input_label": "フォルダ名に含まれる文字列",
+        "pattern_input_help": "この文字列を含むすべてのフォルダを再帰的に検索して変換します",
+        "matched_folders": "マッチしたフォルダ: {count}件",
+        "no_matched_folders": "指定した文字列を含むフォルダが見つかりませんでした",
         "target_selection_title": "変換先の選択",
         "target_selection_label": "変換先を選択",
         "target_selection_help": "マップライト: category=0, キャラライト: category=1",
@@ -45,19 +69,36 @@ TRANSLATIONS = {
         "error_occurred": "エラーが発生しました:",
     },
     "en": {
-        "title": "Digital Craft Item Converter",
-        "subtitle": "Convert plain items in scene data between Map/Character light types.",
+        "title": "Digital Craft Primitive Item Converter",
+        "subtitle": "Convert primitive items (planes, etc.) in scene data between Map/Character light types.\nThis allows you to choose which light type to apply.",
         "usage_title": "How to use",
         "usage_content": """
 1. Upload a Digital Craft scene data (.png)
-2. Select the target folder from top-level folders
+2. Choose how to select folders:
+   - **Select from dropdown**: Choose one folder from top-level folders
+   - **Search by pattern**: Search all folders containing the input string
 3. Choose the conversion target (Map Light or Character Light)
 4. Click the "Execute Conversion" button
 5. Download the converted file
 
+**Pattern search example:**
+
+If you enter "furniture", matching folders are recursively selected:
+```
+Workspace
+├── RoomA
+│   ├── furniture_table ← ✓ Match
+│   ├── furniture_chair ← ✓ Match
+│   └── lighting
+├── RoomB
+│   ├── furniture_sofa ← ✓ Match
+│   └── curtain
+└── Exterior
+    └── plants
+```
+
 **Notes:**
 - The scene title will have "(Map)" or "(Chara)" appended based on the conversion target
-- Only top-level workspace folders are selectable to keep processing lightweight
 - All items in subfolders under the selected folder will also be converted recursively
 """,
         "file_uploader": "Upload scene data (PNG)",
@@ -65,8 +106,15 @@ TRANSLATIONS = {
         "success_load": "Scene data loaded:",
         "warning_no_folders": "No folders found at the top level.",
         "folder_selection_title": "Folder Selection",
+        "folder_selection_mode": "Selection Method",
+        "mode_dropdown": "Select from dropdown",
+        "mode_pattern": "Search by pattern",
         "folder_selection_label": "Select folder to convert",
         "folder_selection_help": "All items under the selected folder will be converted",
+        "pattern_input_label": "String to match in folder names",
+        "pattern_input_help": "Recursively search and convert all folders containing this string",
+        "matched_folders": "Matched folders: {count}",
+        "no_matched_folders": "No folders found containing the specified string",
         "target_selection_title": "Conversion Target Selection",
         "target_selection_label": "Select conversion target",
         "target_selection_help": "Map Light: category=0, Character Light: category=1",
@@ -348,6 +396,32 @@ def find_top_level_folders(objects):
     return folders
 
 
+def find_folders_by_pattern(hs, pattern):
+    """
+    指定したパターン（文字列）を含むフォルダをすべて再帰的に検索する
+    walk()メソッドを使用して全オブジェクトを走査する
+    """
+    matched_folders = []
+
+    for key, obj in hs.walk():
+        if obj.get("type") == FOLDER_TYPE:
+            data = obj.get("data", {})
+            folder_name = data.get("name", "")
+
+            if pattern in folder_name:
+                child_list = data.get("child", [])
+                matched_folders.append(
+                    {
+                        "name": folder_name,
+                        "key": key,
+                        "child_count": len(child_list),
+                        "obj": obj,
+                    }
+                )
+
+    return matched_folders
+
+
 def build_plane_conversion_map(plane_map_chara_dict):
     """変換用のマッピングを構築"""
     to_map = {}
@@ -438,26 +512,60 @@ if uploaded_file is not None:
         # トップレベルのフォルダを取得
         folders = find_top_level_folders(hs.objects)
 
-        if not folders:
-            st.warning(get_text("warning_no_folders", lang))
+        st.subheader(get_text("folder_selection_title", lang))
+
+        # 選択方法の切り替え
+        selection_mode = st.radio(
+            get_text("folder_selection_mode", lang),
+            options=["dropdown", "pattern"],
+            format_func=lambda x: get_text("mode_dropdown", lang)
+            if x == "dropdown"
+            else get_text("mode_pattern", lang),
+            horizontal=True,
+        )
+
+        target_folders = []
+
+        if selection_mode == "dropdown":
+            # 既存のドロップダウン方式
+            if not folders:
+                st.warning(get_text("warning_no_folders", lang))
+            else:
+                folder_options = {
+                    f"{f['name']} ({f['child_count']} children)": i
+                    for i, f in enumerate(folders)
+                }
+
+                selected_folder_name = st.selectbox(
+                    get_text("folder_selection_label", lang),
+                    options=list(folder_options.keys()),
+                    help=get_text("folder_selection_help", lang),
+                )
+
+                selected_folder_idx = folder_options[selected_folder_name]
+                target_folders = [folders[selected_folder_idx]]
+
         else:
-            st.subheader(get_text("folder_selection_title", lang))
-
-            # フォルダ選択用のドロップダウン
-            folder_options = {
-                f"{f['name']} ({f['child_count']} children)": i
-                for i, f in enumerate(folders)
-            }
-
-            selected_folder_name = st.selectbox(
-                get_text("folder_selection_label", lang),
-                options=list(folder_options.keys()),
-                help=get_text("folder_selection_help", lang),
+            # パターンマッチ方式
+            pattern = st.text_input(
+                get_text("pattern_input_label", lang),
+                help=get_text("pattern_input_help", lang),
             )
 
-            selected_folder_idx = folder_options[selected_folder_name]
-            selected_folder = folders[selected_folder_idx]
+            if pattern:
+                matched = find_folders_by_pattern(hs, pattern)
+                if matched:
+                    st.info(get_text("matched_folders", lang).format(count=len(matched)))
+                    # マッチしたフォルダを表示
+                    with st.expander("Matched folders", expanded=False):
+                        for f in matched:
+                            st.write(f"- {f['name']} (key: {f['key']}, {f['child_count']} children)")
+                    target_folders = matched
+                else:
+                    st.warning(get_text("no_matched_folders", lang))
 
+        # 変換対象がある場合のみ続行
+        if target_folders:
             # 変換先の選択
             st.subheader(get_text("target_selection_title", lang))
             target_light = st.radio(
@@ -483,22 +591,35 @@ if uploaded_file is not None:
 
             # 変換実行ボタン
             if st.button(get_text("execute_button", lang), type="primary"):
-                # 変換を実行
-                converted_count = set_folder_items_light_type(
-                    selected_folder["obj"],
-                    PLANE_MAP_CHARA_DICT,
-                    target_light=target_light,
-                    alpha=alpha_value,
-                )
+                # すべてのターゲットフォルダに対して変換を実行
+                total_converted = 0
+                converted_folder_names = []
+
+                for folder in target_folders:
+                    converted_count = set_folder_items_light_type(
+                        folder["obj"],
+                        PLANE_MAP_CHARA_DICT,
+                        target_light=target_light,
+                        alpha=alpha_value,
+                    )
+                    total_converted += converted_count
+                    converted_folder_names.append(folder["name"])
 
                 target_name = (
                     get_text("map_light", lang)
                     if target_light == "map"
                     else get_text("chara_light", lang)
                 )
-                st.success(
-                    f"'{selected_folder['name']}' {get_text('success_convert', lang).format(count=converted_count, target=target_name, folder=selected_folder['name'])}"
-                )
+
+                if len(target_folders) == 1:
+                    st.success(
+                        f"'{converted_folder_names[0]}' {get_text('success_convert', lang).format(count=total_converted, target=target_name, folder=converted_folder_names[0])}"
+                    )
+                else:
+                    folder_list = ", ".join(converted_folder_names)
+                    st.success(
+                        f"{get_text('success_convert', lang).format(count=total_converted, target=target_name, folder=folder_list)} (folders: {folder_list})"
+                    )
 
                 # タイトルに変換先を追加
                 suffix = "(マップ)" if target_light == "map" else "(キャラ)"
