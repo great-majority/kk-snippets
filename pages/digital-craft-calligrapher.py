@@ -1359,10 +1359,10 @@ try:
     st.text(get_text("text_size_help", lang))
     text_height = st.slider(
         get_text("height_label", lang),
-        min_value=0.1,
+        min_value=0.01,
         max_value=2.0,
         value=0.5,
-        step=0.05,
+        step=0.01,
     )
 
     st.markdown("---")
