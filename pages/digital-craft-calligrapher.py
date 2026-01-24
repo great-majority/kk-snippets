@@ -2,7 +2,6 @@ import copy
 import io
 import json
 import struct
-import textwrap
 import uuid
 from pathlib import Path
 from typing import Any, BinaryIO, Dict, Union
@@ -137,7 +136,6 @@ SPACING_RATIO = 0.2
 FONT_SIZE = 200
 FONT_DIR = Path(__file__).parent / "digital-craft-calligrapher-data"
 CHAR_CANVAS_PADDING = 5
-CHAR_GAP_PX = 2
 PLANE_PRESETS = {
     "平面(マップ)": {"group": 0, "category": 0, "no": 215},
     "平面(キャラ)": {"group": 1, "category": 0, "no": 290},
@@ -213,6 +211,159 @@ def compute_layout(text_input, per_char_resolution, text_height, plane_size_fact
         "text_scale": text_scale,
         "spacing": spacing,
     }
+
+
+def measure_text_advance(draw, font, value):
+    """PILのメトリクスから文字列のアドバンス幅を取得する。"""
+    if hasattr(draw, "textlength"):
+        return draw.textlength(value, font=font)
+    if hasattr(font, "getlength"):
+        return font.getlength(value)
+    bbox = draw.textbbox((0, 0), value, font=font, anchor="ls")
+    return bbox[2] - bbox[0]
+
+
+def compute_text_center_ratios(text, font, img_width):
+    """PILの描画位置に基づき、各文字の中心Xの比率(0-1)を返す。"""
+    dummy_img = Image.new("L", (1, 1))
+    dummy_draw = ImageDraw.Draw(dummy_img)
+    text_bbox = dummy_draw.textbbox((0, 0), text, font=font, anchor="ls")
+    text_left = text_bbox[0]
+    text_width = max(1, text_bbox[2] - text_bbox[0])
+    x_offset = (img_width - text_width) // 2 - text_left
+
+    centers = []
+    for index, char in enumerate(text):
+        advance = measure_text_advance(dummy_draw, font, text[:index])
+        char_bbox = dummy_draw.textbbox((advance, 0), char, font=font, anchor="ls")
+        if char_bbox is None or (char_bbox[2] - char_bbox[0]) == 0:
+            char_advance = measure_text_advance(dummy_draw, font, char)
+            center = advance + char_advance / 2
+        else:
+            center = (char_bbox[0] + char_bbox[2]) / 2
+        center_image = x_offset + center
+        centers.append(center_image / max(1, img_width))
+    return centers
+
+
+def compute_grid_width_from_image(img, grid_height):
+    """元の画像の縦横比を維持したまま、グリッド幅を算出する。"""
+    return max(1, int(round(img.width * grid_height / img.height)))
+
+
+def build_char_pixels(
+    text,
+    font,
+    font_size,
+    per_char_resolution,
+    canvas_width,
+    canvas_height,
+    effective_threshold,
+):
+    """各文字を描画し、1文字分の正方形ピクセルグリッドへ縮小する。"""
+    char_pixels_list = []
+    char_center_cols = []
+    raw_plane_count = 0
+
+    # 各文字を同一サイズのキャンバスへ描画して、等解像度のピクセルへ変換する。
+    for char in text:
+        char_img = text_to_image(
+            char,
+            font_size=font_size,
+            font=font,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+        )
+        char_pixels = resample_image(
+            char_img,
+            per_char_resolution,
+            per_char_resolution,
+        )
+        raw_plane_count += int(np.sum(char_pixels >= effective_threshold))
+
+        # 文字の見た目中心を求めるために、非ゼロ列の範囲を測る。
+        nonzero_cols = np.where(char_pixels >= effective_threshold)[1]
+        if nonzero_cols.size == 0:
+            center_col = (per_char_resolution - 1) / 2
+        else:
+            center_col = (nonzero_cols.min() + nonzero_cols.max()) / 2
+
+        char_pixels_list.append(char_pixels)
+        char_center_cols.append(center_col)
+
+    return char_pixels_list, char_center_cols, raw_plane_count
+
+
+def build_preview_from_image(img, grid_width, grid_height):
+    """元のPIL画像をプレビューサイズに縮小する。"""
+    return resample_image(img, grid_width, grid_height)
+
+
+def build_char_folders(
+    text,
+    char_pixels_list,
+    char_center_cols,
+    desired_centers,
+    plane_template,
+    folder_obj,
+    grid_width,
+    spacing,
+    threshold,
+    color,
+    edge_color,
+    antialias,
+    plane_scale,
+    global_start_x,
+    global_start_z,
+    per_char_resolution,
+    merge_horizontal,
+    merge_color_threshold,
+):
+    """文字ごとの平面とフォルダを生成し、中心比率に沿って配置する。"""
+    char_folders = []
+    plane_count = 0
+
+    for index, char in enumerate(text):
+        # 左右反転を補正し、座標系の向きに合わせる。
+        char_pixels = np.fliplr(char_pixels_list[index])
+        center_col = char_center_cols[index]
+
+        # 文字画像の左端位置（X）を、文字ごとの解像度に基づいて配置する。
+        char_start_x = global_start_x + index * per_char_resolution * spacing
+        center_x = char_start_x + center_col * spacing
+        planes = pixels_to_planes(
+            char_pixels,
+            plane_template,
+            spacing=spacing,
+            threshold=threshold,
+            color=color,
+            edge_color=edge_color,
+            antialias=antialias,
+            scale=plane_scale,
+            start_x=char_start_x,
+            start_z=global_start_z,
+            merge_horizontal=merge_horizontal,
+            merge_color_threshold=merge_color_threshold,
+        )
+        # ローカル中心に合わせて平面をオフセットする。
+        for plane in planes:
+            plane["data"]["position"]["x"] -= center_x
+        plane_count += len(planes)
+
+        # PIL上の中心比率を、シーンのX座標へ変換する。
+        desired_center_x = global_start_x + (grid_width - 1) * spacing * (
+            1.0 - desired_centers[index]
+        )
+
+        char_folder = copy.deepcopy(folder_obj)
+        char_label = char if char.strip() else "空白"
+        char_folder["data"]["name"] = f"文字_{index + 1}_{char_label}"
+        char_folder["data"]["position"]["x"] = desired_center_x
+        char_folder["data"]["child"] = planes
+        char_folder["data"]["treeState"] = 1
+        char_folders.append(char_folder)
+
+    return char_folders, plane_count
 
 
 def render_preview(original_img, preview_pixels, grid_width, grid_height, lang="ja"):
@@ -1099,111 +1250,52 @@ def generate_text_scene(
     # 2. 1文字ごとに平面を生成
     per_char_resolution = grid_height
     text_length = len(text)
-    grid_width = max(1, int(round(img.width * per_char_resolution / img.height)))
+    grid_width = compute_grid_width_from_image(img, per_char_resolution)
 
+    # グリッド幅に合わせてテキスト全体の左右スケールを揃える。
     global_start_x = -((grid_width - 1) * spacing) / 2
     global_start_z = -((grid_height - 1) * spacing) / 2
-    char_pixels_list = []
-    char_center_cols = []
-    raw_plane_count = 0
     effective_threshold = 1 if antialias else 128
 
-    dummy_img = Image.new("L", (1, 1))
-    dummy_draw = ImageDraw.Draw(dummy_img)
-    text_bbox = dummy_draw.textbbox((0, 0), text, font=font, anchor="ls")
-    text_left = text_bbox[0]
-    text_width = max(1, text_bbox[2] - text_bbox[0])
-    x_offset = (img.width - text_width) // 2 - text_left
+    # PILの文字中心比率を使って、各文字の配置基準を決める。
+    desired_centers = compute_text_center_ratios(text, font, img.width)
+    (
+        char_pixels_list,
+        char_center_cols,
+        raw_plane_count,
+    ) = build_char_pixels(
+        text,
+        font,
+        font_size,
+        per_char_resolution,
+        canvas_width,
+        canvas_height,
+        effective_threshold,
+    )
+    # プレビューは元画像をグリッドサイズに合わせて縮小する。
+    preview_pixels = build_preview_from_image(img, grid_width, grid_height)
 
-    def measure_text_advance(value):
-        if hasattr(dummy_draw, "textlength"):
-            return dummy_draw.textlength(value, font=font)
-        if hasattr(font, "getlength"):
-            return font.getlength(value)
-        bbox = dummy_draw.textbbox((0, 0), value, font=font, anchor="ls")
-        return bbox[2] - bbox[0]
-
-    centers = []
-    for index, char in enumerate(text):
-        advance = measure_text_advance(text[:index])
-        char_bbox = dummy_draw.textbbox((advance, 0), char, font=font, anchor="ls")
-        if char_bbox is None or (char_bbox[2] - char_bbox[0]) == 0:
-            char_advance = measure_text_advance(char)
-            center = advance + char_advance / 2
-        else:
-            center = (char_bbox[0] + char_bbox[2]) / 2
-        center_image = x_offset + center
-        centers.append(center_image / max(1, img.width))
-
-    for index, char in enumerate(text):
-        display_index = index
-        char_img = text_to_image(
-            char,
-            font_size=font_size,
-            font=font,
-            canvas_width=canvas_width,
-            canvas_height=canvas_height,
-        )
-        char_pixels = resample_image(
-            char_img,
-            per_char_resolution,
-            per_char_resolution,
-        )
-        raw_plane_count += int(np.sum(char_pixels >= effective_threshold))
-
-        nonzero_cols = np.where(char_pixels >= effective_threshold)[1]
-        if nonzero_cols.size == 0:
-            center_col = (per_char_resolution - 1) / 2
-        else:
-            center_col = (nonzero_cols.min() + nonzero_cols.max()) / 2
-
-        char_pixels_list.append(char_pixels)
-        char_center_cols.append(center_col)
-
-    desired_centers_display = centers
-    preview_pixels = resample_image(img, grid_width, grid_height)
-
-    char_folders = []
-    plane_count = 0
-    for index, char in enumerate(text):
-        display_index = index
-        char_pixels = np.fliplr(char_pixels_list[index])
-        center_col = char_center_cols[index]
-
-        char_start_x = global_start_x + display_index * per_char_resolution * spacing
-        center_x = char_start_x + center_col * spacing
-        planes = pixels_to_planes(
-            char_pixels,
-            plane_template,
-            spacing=spacing,
-            threshold=threshold,
-            color=color,
-            edge_color=edge_color,
-            antialias=antialias,
-            scale=plane_scale,
-            start_x=char_start_x,
-            start_z=global_start_z,
-            merge_horizontal=merge_horizontal,
-            merge_color_threshold=merge_color_threshold,
-        )
-        for plane in planes:
-            plane["data"]["position"]["x"] -= center_x
-        plane_count += len(planes)
-
-        desired_center_x = (
-            global_start_x
-            + (grid_width - 1)
-            * spacing
-            * (1.0 - desired_centers_display[display_index])
-        )
-
-        char_folder = copy.deepcopy(folder_obj)
-        char_label = char if char.strip() else "空白"
-        char_folder["data"]["name"] = f"文字_{index + 1}_{char_label}"
-        char_folder["data"]["position"]["x"] = desired_center_x
-        char_folder["data"]["child"] = planes
-        char_folder["data"]["treeState"] = 1
-        char_folders.append(char_folder)
+    # 文字ごとの平面を構築し、フォルダにまとめる。
+    char_folders, plane_count = build_char_folders(
+        text,
+        char_pixels_list,
+        char_center_cols,
+        desired_centers,
+        plane_template,
+        folder_obj,
+        grid_width,
+        spacing,
+        threshold,
+        color,
+        edge_color,
+        antialias,
+        plane_scale,
+        global_start_x,
+        global_start_z,
+        per_char_resolution,
+        merge_horizontal,
+        merge_color_threshold,
+    )
 
     # 3. シーンを作成
     scene = HoneycomeSceneDataSimple()
