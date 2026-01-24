@@ -3,7 +3,6 @@ import io
 import json
 import struct
 import textwrap
-import unicodedata
 import uuid
 from pathlib import Path
 from typing import Any, BinaryIO, Dict, Union
@@ -212,39 +211,6 @@ def compute_layout(text_input, per_char_resolution, text_height, plane_size_fact
         "text_scale": text_scale,
         "spacing": spacing,
     }
-
-
-def build_preview_pixels(pixels, text_length):
-    blocks = np.split(pixels, max(1, text_length), axis=1)
-    return np.concatenate(list(reversed(blocks)), axis=1)
-
-
-def build_preview_pixels_from_chars(
-    char_pixels_list, char_widths, gap_px, height, threshold=1
-):
-    total_width_px = sum(char_widths) + max(0, len(char_widths) - 1) * gap_px
-    total_width_px = max(1, int(total_width_px))
-    preview = np.zeros((height, total_width_px), dtype=np.uint8)
-    cursor = 0
-
-    for char_pixels, width_px in zip(char_pixels_list, char_widths):
-        if width_px <= 0:
-            cursor += gap_px
-            continue
-        nonzero_cols = np.where(char_pixels >= threshold)[1]
-        if nonzero_cols.size == 0:
-            cursor += width_px + gap_px
-            continue
-        left = int(nonzero_cols.min())
-        right = int(nonzero_cols.max()) + 1
-        cropped = char_pixels[:, left:right]
-        crop_width = cropped.shape[1]
-        if crop_width > 0:
-            paste_width = min(width_px, crop_width)
-            preview[:, cursor : cursor + paste_width] = cropped[:, :paste_width]
-        cursor += width_px + gap_px
-
-    return preview
 
 
 def render_preview(original_img, preview_pixels, grid_width, grid_height, lang="ja"):
@@ -1060,8 +1026,8 @@ def pixels_to_planes(
 
     def flush_run(run_start, run_end, run_color, row_index):
         run_length = run_end - run_start + 1
-        x_first = start_x + (width - 1 - run_start) * spacing
-        x_last = start_x + (width - 1 - run_end) * spacing
+        x_first = start_x + run_start * spacing
+        x_last = start_x + run_end * spacing
         x = (x_first + x_last) / 2
         z = start_z + row_index * spacing
         y = 0.0
@@ -1138,19 +1104,44 @@ def generate_text_scene(
     # 2. 1文字ごとに平面を生成
     per_char_resolution = grid_height
     text_length = len(text)
-    grid_width = per_char_resolution * max(1, text_length)
-    pixels = np.zeros((grid_height, grid_width), dtype=np.uint8)
+    grid_width = max(1, int(round(img.width * per_char_resolution / img.height)))
 
     global_start_x = -((grid_width - 1) * spacing) / 2
     global_start_z = -((grid_height - 1) * spacing) / 2
     char_pixels_list = []
     char_center_cols = []
-    char_widths = []
     raw_plane_count = 0
     effective_threshold = 1 if antialias else 128
 
+    dummy_img = Image.new("L", (1, 1))
+    dummy_draw = ImageDraw.Draw(dummy_img)
+    text_bbox = dummy_draw.textbbox((0, 0), text, font=font, anchor="ls")
+    text_left = text_bbox[0]
+    text_width = max(1, text_bbox[2] - text_bbox[0])
+    x_offset = (img.width - text_width) // 2 - text_left
+
+    def measure_text_advance(value):
+        if hasattr(dummy_draw, "textlength"):
+            return dummy_draw.textlength(value, font=font)
+        if hasattr(font, "getlength"):
+            return font.getlength(value)
+        bbox = dummy_draw.textbbox((0, 0), value, font=font, anchor="ls")
+        return bbox[2] - bbox[0]
+
+    centers = []
     for index, char in enumerate(text):
-        display_index = text_length - 1 - index
+        advance = measure_text_advance(text[:index])
+        char_bbox = dummy_draw.textbbox((advance, 0), char, font=font, anchor="ls")
+        if char_bbox is None or (char_bbox[2] - char_bbox[0]) == 0:
+            char_advance = measure_text_advance(char)
+            center = advance + char_advance / 2
+        else:
+            center = (char_bbox[0] + char_bbox[2]) / 2
+        center_image = x_offset + center
+        centers.append(center_image / max(1, img.width))
+
+    for index, char in enumerate(text):
+        display_index = index
         char_img = text_to_image(
             char,
             font_size=font_size,
@@ -1165,71 +1156,27 @@ def generate_text_scene(
         )
         raw_plane_count += int(np.sum(char_pixels >= effective_threshold))
 
-        start_col = display_index * per_char_resolution
-        pixels[:, start_col : start_col + per_char_resolution] = char_pixels
-
         nonzero_cols = np.where(char_pixels >= effective_threshold)[1]
         if nonzero_cols.size == 0:
             center_col = (per_char_resolution - 1) / 2
-            width_px = 0
         else:
             center_col = (nonzero_cols.min() + nonzero_cols.max()) / 2
-            width_px = int(nonzero_cols.max() - nonzero_cols.min() + 1)
 
         char_pixels_list.append(char_pixels)
         char_center_cols.append(center_col)
-        char_widths.append(width_px)
 
-    char_widths_display = list(reversed(char_widths))
-    display_chars = list(reversed(list(text)))
-    min_width = min(
-        (
-            width
-            for width, char in zip(char_widths_display, display_chars)
-            if width > 0 and unicodedata.category(char)[0] in ("L", "N")
-        ),
-        default=0,
-    )
-    if min_width <= 0:
-        min_width = min(
-            (width for width in char_widths_display if width > 0), default=1
-        )
-    char_widths_display = [
-        width if width > 0 else min_width for width in char_widths_display
-    ]
-    char_widths_normal = list(reversed(char_widths_display))
-    total_width_px = sum(char_widths_display) + max(0, text_length - 1) * CHAR_GAP_PX
-    desired_centers_display = None
-    if total_width_px > 0:
-        desired_centers_display = []
-        cursor = 0.0
-        new_global_start_x = -((total_width_px - 1) * spacing) / 2
-        for width_px in char_widths_display:
-            if width_px > 0:
-                center_px = cursor + (width_px - 1) / 2
-                desired_center_x = new_global_start_x + center_px * spacing
-                cursor += width_px + CHAR_GAP_PX
-            else:
-                desired_center_x = new_global_start_x + cursor * spacing
-            desired_centers_display.append(desired_center_x)
-
-    preview_pixels = build_preview_pixels_from_chars(
-        char_pixels_list,
-        char_widths_normal,
-        CHAR_GAP_PX,
-        grid_height,
-        threshold=effective_threshold,
-    )
+    desired_centers_display = centers
+    preview_pixels = resample_image(img, grid_width, grid_height)
 
     char_folders = []
     plane_count = 0
     for index, char in enumerate(text):
-        display_index = text_length - 1 - index
-        char_pixels = char_pixels_list[index]
+        display_index = index
+        char_pixels = np.fliplr(char_pixels_list[index])
         center_col = char_center_cols[index]
 
         char_start_x = global_start_x + display_index * per_char_resolution * spacing
-        center_x = char_start_x + (per_char_resolution - 1 - center_col) * spacing
+        center_x = char_start_x + center_col * spacing
         planes = pixels_to_planes(
             char_pixels,
             plane_template,
@@ -1248,10 +1195,12 @@ def generate_text_scene(
             plane["data"]["position"]["x"] -= center_x
         plane_count += len(planes)
 
-        if desired_centers_display is None:
-            desired_center_x = center_x
-        else:
-            desired_center_x = desired_centers_display[display_index]
+        desired_center_x = (
+            global_start_x
+            + (grid_width - 1)
+            * spacing
+            * (1.0 - desired_centers_display[display_index])
+        )
 
         char_folder = copy.deepcopy(folder_obj)
         char_label = char if char.strip() else "空白"
