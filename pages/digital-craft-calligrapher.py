@@ -159,6 +159,8 @@ def format_font_option(font_path):
         "YuseiMagic-Regular.ttf": "油性マジック",
         "DotGothic16-Regular.ttf": "ドット文字",
         "KaiseiDecol-Regular.ttf": "おしゃれ明朝",
+        "Oswald-Regular.ttf": "縦長英字",
+        "ZenKakuGothicNew-Regular.ttf": "無機質ゴシック",
     }
     note = impressions.get(font_path.name)
     if note:
