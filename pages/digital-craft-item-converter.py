@@ -555,11 +555,15 @@ if uploaded_file is not None:
             if pattern:
                 matched = find_folders_by_pattern(hs, pattern)
                 if matched:
-                    st.info(get_text("matched_folders", lang).format(count=len(matched)))
+                    st.info(
+                        get_text("matched_folders", lang).format(count=len(matched))
+                    )
                     # マッチしたフォルダを表示
                     with st.expander("Matched folders", expanded=False):
                         for f in matched:
-                            st.write(f"- {f['name']} (key: {f['key']}, {f['child_count']} children)")
+                            st.write(
+                                f"- {f['name']} (key: {f['key']}, {f['child_count']} children)"
+                            )
                     target_folders = matched
                 else:
                     st.warning(get_text("no_matched_folders", lang))

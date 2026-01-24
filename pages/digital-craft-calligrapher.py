@@ -3,6 +3,7 @@ import io
 import json
 import struct
 import textwrap
+import unicodedata
 import uuid
 from pathlib import Path
 from typing import Any, BinaryIO, Dict, Union
@@ -47,6 +48,8 @@ TRANSLATIONS = {
         "merge_horizontal_help": "横方向に色が一致していれば長方形で代替し平面の数を大幅に減らします。1Pixelごといじりたいのであればこのチェックを外してください。",
         "plane_size_label": "平面の大きさ",
         "plane_size_help": "1.0が現在の大きさ。小さくすると文字がスカスカになります。ドット感のある文字の描写に使います。",
+        "x_spacing_label": "横方向の間隔",
+        "x_spacing_help": "横方向だけ間隔を詰めたり広げたりします。1.0が現在の間隔です。",
         "plane_type_label": "使用する平面",
         "plane_type_help": "マップの方の平面を使うか、キャラの方の平面を使うかを設定します。マップライトとキャラライトのどちらのライトに影響されるかが決まります。",
         "plane_map": "平面(マップ)",
@@ -99,6 +102,8 @@ If you must reduce plane count, adjust this parameter to find a good balance.
         "merge_horizontal_help": "Replaces matching horizontal colors with rectangles to greatly reduce plane count. Uncheck to edit per pixel.",
         "plane_size_label": "Plane size",
         "plane_size_help": "1.0 is current size. Smaller values make text sparse. Used for pixel-art style text.",
+        "x_spacing_label": "Horizontal spacing",
+        "x_spacing_help": "Adjust horizontal spacing only. 1.0 is the current spacing.",
         "plane_type_label": "Plane type to use",
         "plane_type_help": "Choose whether to use map planes or character planes. This determines which light type affects them.",
         "plane_map": "Plane (Map)",
@@ -133,6 +138,7 @@ SPACING_RATIO = 0.2
 FONT_SIZE = 200
 FONT_DIR = Path(__file__).parent / "digital-craft-calligrapher-data"
 CHAR_CANVAS_PADDING = 5
+CHAR_GAP_PX = 2
 PLANE_PRESETS = {
     "平面(マップ)": {"group": 0, "category": 0, "no": 215},
     "平面(キャラ)": {"group": 1, "category": 0, "no": 290},
@@ -1122,9 +1128,7 @@ def generate_text_scene(
     # 1. テキストを画像に変換（プレビュー用）
     font = load_font(font_size, font_path)
     img = text_to_image(text, font_size=font_size, font=font)
-    canvas_width, canvas_height = compute_canvas_size(
-        text, font, CHAR_CANVAS_PADDING
-    )
+    canvas_width, canvas_height = compute_canvas_size(text, font, CHAR_CANVAS_PADDING)
 
     # 2. 1文字ごとに平面を生成
     per_char_resolution = grid_height
@@ -1134,9 +1138,9 @@ def generate_text_scene(
 
     global_start_x = -((grid_width - 1) * spacing) / 2
     global_start_z = -((grid_height - 1) * spacing) / 2
-
-    char_folders = []
-    plane_count = 0
+    char_pixels_list = []
+    char_center_cols = []
+    char_widths = []
     raw_plane_count = 0
     effective_threshold = 1 if antialias else 128
 
@@ -1161,12 +1165,58 @@ def generate_text_scene(
         start_col = display_index * per_char_resolution
         pixels[:, start_col : start_col + per_char_resolution] = char_pixels
 
-        char_start_x = global_start_x + start_col * spacing
         nonzero_cols = np.where(char_pixels >= effective_threshold)[1]
         if nonzero_cols.size == 0:
             center_col = (per_char_resolution - 1) / 2
+            width_px = 0
         else:
             center_col = (nonzero_cols.min() + nonzero_cols.max()) / 2
+            width_px = int(nonzero_cols.max() - nonzero_cols.min() + 1)
+
+        char_pixels_list.append(char_pixels)
+        char_center_cols.append(center_col)
+        char_widths.append(width_px)
+
+    char_widths_display = list(reversed(char_widths))
+    display_chars = list(reversed(list(text)))
+    min_width = min(
+        (
+            width
+            for width, char in zip(char_widths_display, display_chars)
+            if width > 0 and unicodedata.category(char)[0] in ("L", "N")
+        ),
+        default=0,
+    )
+    if min_width <= 0:
+        min_width = min(
+            (width for width in char_widths_display if width > 0), default=1
+        )
+    char_widths_display = [
+        width if width > 0 else min_width for width in char_widths_display
+    ]
+    total_width_px = sum(char_widths_display) + max(0, text_length - 1) * CHAR_GAP_PX
+    desired_centers_display = None
+    if total_width_px > 0:
+        desired_centers_display = []
+        cursor = 0.0
+        new_global_start_x = -((total_width_px - 1) * spacing) / 2
+        for width_px in char_widths_display:
+            if width_px > 0:
+                center_px = cursor + (width_px - 1) / 2
+                desired_center_x = new_global_start_x + center_px * spacing
+                cursor += width_px + CHAR_GAP_PX
+            else:
+                desired_center_x = new_global_start_x + cursor * spacing
+            desired_centers_display.append(desired_center_x)
+
+    char_folders = []
+    plane_count = 0
+    for index, char in enumerate(text):
+        display_index = text_length - 1 - index
+        char_pixels = char_pixels_list[index]
+        center_col = char_center_cols[index]
+
+        char_start_x = global_start_x + display_index * per_char_resolution * spacing
         center_x = char_start_x + (per_char_resolution - 1 - center_col) * spacing
         planes = pixels_to_planes(
             char_pixels,
@@ -1186,10 +1236,15 @@ def generate_text_scene(
             plane["data"]["position"]["x"] -= center_x
         plane_count += len(planes)
 
+        if desired_centers_display is None:
+            desired_center_x = center_x
+        else:
+            desired_center_x = desired_centers_display[display_index]
+
         char_folder = copy.deepcopy(folder_obj)
         char_label = char if char.strip() else "空白"
         char_folder["data"]["name"] = f"文字_{index + 1}_{char_label}"
-        char_folder["data"]["position"]["x"] = center_x
+        char_folder["data"]["position"]["x"] = desired_center_x
         char_folder["data"]["child"] = planes
         char_folder["data"]["treeState"] = 1
         char_folders.append(char_folder)
