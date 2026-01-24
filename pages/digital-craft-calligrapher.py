@@ -912,7 +912,6 @@ def text_to_image(
     font_path=None,
     font=None,
     padding=10,
-    vertical_align="center",
 ):
     """テキストを画像に描画"""
     if font is None:
@@ -920,41 +919,26 @@ def text_to_image(
 
     dummy_img = Image.new("L", (1, 1))
     dummy_draw = ImageDraw.Draw(dummy_img)
-    anchor = None
-    if vertical_align == "baseline":
-        anchor = "ls"
-    bbox = dummy_draw.textbbox((0, 0), text, font=font, anchor=anchor)
+    bbox = dummy_draw.textbbox((0, 0), text, font=font, anchor="ls")
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
     if canvas_width is None:
         canvas_width = text_width + padding * 2
     if canvas_height is None:
-        if vertical_align == "baseline":
-            ascent, descent = font.getmetrics()
-            canvas_height = ascent + descent + padding * 2
-        else:
-            canvas_height = text_height + padding * 2
+        ascent, descent = font.getmetrics()
+        canvas_height = ascent + descent + padding * 2
 
     img = Image.new("L", (canvas_width, canvas_height), color=0)
     draw = ImageDraw.Draw(img)
 
     x = (canvas_width - text_width) // 2 - bbox[0]
-    if vertical_align == "baseline":
-        baseline_y = padding + font.getmetrics()[0]
-        draw.text((x, baseline_y), text, fill=255, font=font, anchor="ls")
-        return img
-    if vertical_align == "bottom":
-        y = canvas_height - padding - bbox[3]
-    elif vertical_align == "top":
-        y = padding - bbox[1]
-    else:
-        y = (canvas_height - text_height) // 2 - bbox[1]
-    draw.text((x, y), text, fill=255, font=font)
+    baseline_y = padding + font.getmetrics()[0]
+    draw.text((x, baseline_y), text, fill=255, font=font, anchor="ls")
 
     return img
 
 
-def resample_image(img, target_width, target_height, vertical_align="center"):
+def resample_image(img, target_width, target_height):
     """画像を指定サイズにリサンプル"""
     scale = min(target_width / img.width, target_height / img.height)
     resized_width = max(1, int(img.width * scale))
@@ -962,14 +946,7 @@ def resample_image(img, target_width, target_height, vertical_align="center"):
     resized = img.resize((resized_width, resized_height), Image.Resampling.BILINEAR)
     canvas = Image.new("L", (target_width, target_height), color=0)
     x = (target_width - resized_width) // 2
-    if vertical_align == "baseline":
-        y = target_height - resized_height
-    elif vertical_align == "bottom":
-        y = target_height - resized_height
-    elif vertical_align == "top":
-        y = 0
-    else:
-        y = (target_height - resized_height) // 2
+    y = target_height - resized_height
     canvas.paste(resized, (x, y))
     pixels = np.array(canvas)
     return pixels
@@ -1152,13 +1129,11 @@ def generate_text_scene(
             font=font,
             canvas_width=canvas_width,
             canvas_height=canvas_height,
-            vertical_align="baseline",
         )
         char_pixels = resample_image(
             char_img,
             per_char_resolution,
             per_char_resolution,
-            vertical_align="baseline",
         )
         raw_plane_count += int(np.sum(char_pixels >= effective_threshold))
 
