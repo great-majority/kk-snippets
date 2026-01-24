@@ -219,6 +219,34 @@ def build_preview_pixels(pixels, text_length):
     return np.concatenate(list(reversed(blocks)), axis=1)
 
 
+def build_preview_pixels_from_chars(
+    char_pixels_list, char_widths, gap_px, height, threshold=1
+):
+    total_width_px = sum(char_widths) + max(0, len(char_widths) - 1) * gap_px
+    total_width_px = max(1, int(total_width_px))
+    preview = np.zeros((height, total_width_px), dtype=np.uint8)
+    cursor = 0
+
+    for char_pixels, width_px in zip(char_pixels_list, char_widths):
+        if width_px <= 0:
+            cursor += gap_px
+            continue
+        nonzero_cols = np.where(char_pixels >= threshold)[1]
+        if nonzero_cols.size == 0:
+            cursor += width_px + gap_px
+            continue
+        left = int(nonzero_cols.min())
+        right = int(nonzero_cols.max()) + 1
+        cropped = char_pixels[:, left:right]
+        crop_width = cropped.shape[1]
+        if crop_width > 0:
+            paste_width = min(width_px, crop_width)
+            preview[:, cursor : cursor + paste_width] = cropped[:, :paste_width]
+        cursor += width_px + gap_px
+
+    return preview
+
+
 def render_preview(original_img, preview_pixels, grid_width, grid_height, lang="ja"):
     st.subheader(f"🖼️ {get_text('preview_title', lang)}")
     preview_col1, preview_col2 = st.columns(2)
@@ -1169,6 +1197,7 @@ def generate_text_scene(
     char_widths_display = [
         width if width > 0 else min_width for width in char_widths_display
     ]
+    char_widths_normal = list(reversed(char_widths_display))
     total_width_px = sum(char_widths_display) + max(0, text_length - 1) * CHAR_GAP_PX
     desired_centers_display = None
     if total_width_px > 0:
@@ -1183,6 +1212,14 @@ def generate_text_scene(
             else:
                 desired_center_x = new_global_start_x + cursor * spacing
             desired_centers_display.append(desired_center_x)
+
+    preview_pixels = build_preview_pixels_from_chars(
+        char_pixels_list,
+        char_widths_normal,
+        CHAR_GAP_PX,
+        grid_height,
+        threshold=effective_threshold,
+    )
 
     char_folders = []
     plane_count = 0
@@ -1243,7 +1280,7 @@ def generate_text_scene(
     new_folder["data"]["treeState"] = 1
     scene.dicObject = {folder_key: new_folder}
 
-    return scene, img, pixels, plane_count, raw_plane_count
+    return scene, img, preview_pixels, plane_count, raw_plane_count
 
 
 # メイン UI
@@ -1373,45 +1410,48 @@ try:
                     )
                     plane_settings = PLANE_PRESETS[plane_preset_key]
 
-                    scene, original_img, pixels, plane_count, raw_plane_count = (
-                        generate_text_scene(
-                            text=text_input,
-                            template_scene=template_scene,
-                            plane_template={
-                                **plane_template,
-                                "data": {
-                                    **plane_template["data"],
-                                    "group": plane_settings["group"],
-                                    "category": plane_settings["category"],
-                                    "no": plane_settings["no"],
-                                    "light_cancel": 1.0 - light_cancel,
-                                },
+                    (
+                        scene,
+                        original_img,
+                        preview_pixels,
+                        plane_count,
+                        raw_plane_count,
+                    ) = generate_text_scene(
+                        text=text_input,
+                        template_scene=template_scene,
+                        plane_template={
+                            **plane_template,
+                            "data": {
+                                **plane_template["data"],
+                                "group": plane_settings["group"],
+                                "category": plane_settings["category"],
+                                "no": plane_settings["no"],
+                                "light_cancel": 1.0 - light_cancel,
                             },
-                            folder_key=folder_key,
-                            folder_obj=folder_obj,
-                            grid_height=layout["grid_height"],
-                            font_size=font_size,
-                            text_scale=layout["text_scale"],
-                            spacing=layout["spacing"],
-                            threshold=threshold,
-                            color=color,
-                            edge_color=edge_color,
-                            antialias=antialias,
-                            font_path=selected_font,
-                            merge_horizontal=merge_horizontal,
-                            merge_color_threshold=merge_color_threshold,
-                        )
+                        },
+                        folder_key=folder_key,
+                        folder_obj=folder_obj,
+                        grid_height=layout["grid_height"],
+                        font_size=font_size,
+                        text_scale=layout["text_scale"],
+                        spacing=layout["spacing"],
+                        threshold=threshold,
+                        color=color,
+                        edge_color=edge_color,
+                        antialias=antialias,
+                        font_path=selected_font,
+                        merge_horizontal=merge_horizontal,
+                        merge_color_threshold=merge_color_threshold,
                     )
 
                     st.success(
                         f"✅ {get_text('success_generate', lang).format(count=plane_count)}"
                     )
 
-                    preview_pixels = build_preview_pixels(pixels, len(text_input))
                     render_preview(
                         original_img,
                         preview_pixels,
-                        layout["grid_width"],
+                        preview_pixels.shape[1],
                         layout["grid_height"],
                         lang,
                     )
