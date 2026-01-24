@@ -217,23 +217,16 @@ def compute_layout(text_input, per_char_resolution, text_height, plane_size_fact
 
 def render_preview(original_img, preview_pixels, grid_width, grid_height, lang="ja"):
     st.subheader(f"🖼️ {get_text('preview_title', lang)}")
-    preview_col1, preview_col2 = st.columns(2)
-
-    with preview_col1:
-        st.markdown(f"**{get_text('original_image', lang)}**")
-        st.image(original_img, width="stretch")
-
-    with preview_col2:
-        st.markdown(
-            f"**{get_text('pixel_data', lang).format(width=grid_width, height=grid_height)}**"
-        )
-        preview_img = Image.fromarray(preview_pixels)
-        scale = max(1, min(12, int(512 / max(1, preview_img.width))))
-        preview_img = preview_img.resize(
-            (preview_img.width * scale, preview_img.height * scale),
-            Image.Resampling.NEAREST,
-        )
-        st.image(preview_img, width="content")
+    st.markdown(
+        f"**{get_text('pixel_data', lang).format(width=grid_width, height=grid_height)}**"
+    )
+    preview_img = Image.fromarray(preview_pixels)
+    scale = max(1, min(12, int(512 / max(1, preview_img.width))))
+    preview_img = preview_img.resize(
+        (preview_img.width * scale, preview_img.height * scale),
+        Image.Resampling.NEAREST,
+    )
+    st.image(preview_img, width="content")
 
 
 def render_scene_info(scene, plane_count, raw_plane_count, lang="ja"):
