@@ -162,13 +162,19 @@ def format_font_option(font_path):
 
 
 def compute_canvas_height(text, font, padding):
-    max_char_height = 0
+    ascent, descent = font.getmetrics()
+    return (ascent + descent) + padding * 2
+
+
+def compute_canvas_size(text, font, padding):
+    max_char_width = 0
     dummy_img = Image.new("L", (1, 1))
     dummy_draw = ImageDraw.Draw(dummy_img)
     for char in text:
-        bbox = dummy_draw.textbbox((0, 0), char, font=font)
-        max_char_height = max(max_char_height, bbox[3] - bbox[1])
-    return max_char_height + padding * 2
+        bbox = dummy_draw.textbbox((0, 0), char, font=font, anchor="ls")
+        max_char_width = max(max_char_width, bbox[2] - bbox[0])
+    max_char_width = max(1, max_char_width)
+    return max_char_width + padding * 2, compute_canvas_height(text, font, padding)
 
 
 def select_font_option(available_fonts, default_font_name):
@@ -908,18 +914,29 @@ def text_to_image(
 
     dummy_img = Image.new("L", (1, 1))
     dummy_draw = ImageDraw.Draw(dummy_img)
-    bbox = dummy_draw.textbbox((0, 0), text, font=font)
+    anchor = None
+    if vertical_align == "baseline":
+        anchor = "ls"
+    bbox = dummy_draw.textbbox((0, 0), text, font=font, anchor=anchor)
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
     if canvas_width is None:
         canvas_width = text_width + padding * 2
     if canvas_height is None:
-        canvas_height = text_height + padding * 2
+        if vertical_align == "baseline":
+            ascent, descent = font.getmetrics()
+            canvas_height = ascent + descent + padding * 2
+        else:
+            canvas_height = text_height + padding * 2
 
     img = Image.new("L", (canvas_width, canvas_height), color=0)
     draw = ImageDraw.Draw(img)
 
     x = (canvas_width - text_width) // 2 - bbox[0]
+    if vertical_align == "baseline":
+        baseline_y = padding + font.getmetrics()[0]
+        draw.text((x, baseline_y), text, fill=255, font=font, anchor="ls")
+        return img
     if vertical_align == "bottom":
         y = canvas_height - padding - bbox[3]
     elif vertical_align == "top":
@@ -939,7 +956,9 @@ def resample_image(img, target_width, target_height, vertical_align="center"):
     resized = img.resize((resized_width, resized_height), Image.Resampling.BILINEAR)
     canvas = Image.new("L", (target_width, target_height), color=0)
     x = (target_width - resized_width) // 2
-    if vertical_align == "bottom":
+    if vertical_align == "baseline":
+        y = target_height - resized_height
+    elif vertical_align == "bottom":
         y = target_height - resized_height
     elif vertical_align == "top":
         y = 0
@@ -1103,7 +1122,9 @@ def generate_text_scene(
     # 1. テキストを画像に変換（プレビュー用）
     font = load_font(font_size, font_path)
     img = text_to_image(text, font_size=font_size, font=font)
-    canvas_height = compute_canvas_height(text, font, CHAR_CANVAS_PADDING)
+    canvas_width, canvas_height = compute_canvas_size(
+        text, font, CHAR_CANVAS_PADDING
+    )
 
     # 2. 1文字ごとに平面を生成
     per_char_resolution = grid_height
@@ -1125,14 +1146,15 @@ def generate_text_scene(
             char,
             font_size=font_size,
             font=font,
+            canvas_width=canvas_width,
             canvas_height=canvas_height,
-            vertical_align="bottom",
+            vertical_align="baseline",
         )
         char_pixels = resample_image(
             char_img,
             per_char_resolution,
             per_char_resolution,
-            vertical_align="bottom",
+            vertical_align="baseline",
         )
         raw_plane_count += int(np.sum(char_pixels >= effective_threshold))
 
