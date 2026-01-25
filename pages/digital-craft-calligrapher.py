@@ -1519,7 +1519,7 @@ try:
     st.text(get_text("text_size_help", lang))
 
     with st.expander(get_text("text_size_example", lang), expanded=False):
-        st.markdown("![font size example](https://i.imgur.com/Vozo2EX.png)")
+        st.markdown("![font size example](https://i.imgur.com/y04URY3.jpeg)")
 
     text_height = st.slider(
         get_text("height_label", lang),
