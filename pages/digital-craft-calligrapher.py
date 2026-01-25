@@ -1062,7 +1062,6 @@ def text_to_image(
     dummy_draw = ImageDraw.Draw(dummy_img)
     bbox = dummy_draw.textbbox((0, 0), text, font=font, anchor="ls")
     text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
     if canvas_width is None:
         canvas_width = text_width + padding * 2
     if canvas_height is None:
@@ -1219,6 +1218,23 @@ def pixels_to_planes(
     return planes
 
 
+def build_metadata_folder(folder_obj, metadata: dict):
+    """生成時のパラメータを子フォルダ名として埋め込んだ「文字情報」フォルダを作成する。"""
+    info_folder = copy.deepcopy(folder_obj)
+    info_folder["data"]["name"] = "文字情報"
+    info_folder["data"]["treeState"] = 1
+    info_folder["data"]["child"] = []
+
+    for key, value in metadata.items():
+        child_folder = copy.deepcopy(folder_obj)
+        child_folder["data"]["name"] = f"{key}={value}"
+        child_folder["data"]["treeState"] = 1
+        child_folder["data"]["child"] = []
+        info_folder["data"]["child"].append(child_folder)
+
+    return info_folder
+
+
 def generate_text_scene(
     text,
     template_scene,
@@ -1236,6 +1252,7 @@ def generate_text_scene(
     font_path=None,
     merge_horizontal=False,
     merge_color_threshold=0.05,
+    generation_metadata=None,
 ):
     """テキストから3Dシーンを生成"""
     # spacing = scale × 0.2 の関係を利用
@@ -1250,7 +1267,6 @@ def generate_text_scene(
 
     # 2. 1文字ごとに平面を生成
     per_char_resolution = grid_height
-    text_length = len(text)
     grid_width = compute_grid_width_from_image(img, per_char_resolution)
 
     # グリッド幅に合わせてテキスト全体の左右スケールを揃える。
@@ -1313,8 +1329,15 @@ def generate_text_scene(
 
     new_folder = copy.deepcopy(folder_obj)
     new_folder["data"]["name"] = f"テキスト_{text}"
-    new_folder["data"]["child"] = char_folders
     new_folder["data"]["treeState"] = 1
+
+    # 文字情報フォルダを先頭に追加（再現用メタデータ）
+    if generation_metadata:
+        metadata_folder = build_metadata_folder(folder_obj, generation_metadata)
+        new_folder["data"]["child"] = [metadata_folder] + char_folders
+    else:
+        new_folder["data"]["child"] = char_folders
+
     scene.dicObject = {folder_key: new_folder}
 
     return scene, img, preview_pixels, plane_count, raw_plane_count
@@ -1447,6 +1470,21 @@ try:
                     )
                     plane_settings = PLANE_PRESETS[plane_preset_key]
 
+                    # 再現用メタデータを構築
+                    generation_metadata = {
+                        "フォント": selected_font.name if selected_font else "default",
+                        "色": color_hex,
+                        "透明度": color_alpha,
+                        "文字の高さ": text_height,
+                        "解像度": per_char_resolution,
+                        "アンチエイリアス": "ON" if antialias else "OFF",
+                        "AA色": edge_color_hex,
+                        "横方向結合": "ON" if merge_horizontal else "OFF",
+                        "平面サイズ": plane_size_factor,
+                        "平面タイプ": plane_preset_key,
+                        "ライト影響度": light_cancel,
+                    }
+
                     (
                         scene,
                         original_img,
@@ -1479,6 +1517,7 @@ try:
                         font_path=selected_font,
                         merge_horizontal=merge_horizontal,
                         merge_color_threshold=merge_color_threshold,
+                        generation_metadata=generation_metadata,
                     )
 
                     st.success(
