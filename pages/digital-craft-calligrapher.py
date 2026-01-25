@@ -27,7 +27,23 @@ TRANSLATIONS = {
 
 他にも **一文字あたり細かさ**を下げることで平面数が減りますが、文字の解像度が下がるので可読性も悪くなってしまいます。
 どうしても平面数を下げたければこのパラメータを調整していい塩梅を探してみてください。
+
+#### どの設定で文字を作ったか忘れた！
+
+シーン内に生成された **「文字情報」フォルダ** の中に、使用したパラメータが保存されています。
 """,
+        "metadata_folder": "文字情報",
+        "meta_font": "フォント",
+        "meta_color": "色",
+        "meta_alpha": "透明度",
+        "meta_text_height": "文字の高さ",
+        "meta_resolution": "解像度",
+        "meta_antialias": "アンチエイリアス",
+        "meta_aa_color": "AA色",
+        "meta_merge_horizontal": "横方向結合",
+        "meta_plane_size": "平面サイズ",
+        "meta_plane_type": "平面タイプ",
+        "meta_light_influence": "ライト影響度",
         "param_settings": "パラメータ設定",
         "text_input": "テキスト",
         "text_placeholder": "ここにテキストを入力",
@@ -42,8 +58,8 @@ TRANSLATIONS = {
         "resolution_help": "文字のピクセルの細かさ。この値を大きくするほど文字が綺麗になる一方、シーンが重くなります",
         "antialias_label": "アンチエイリアスを使う",
         "antialias_color_label": "アンチエイリアスの色",
-        "merge_horizontal_label": "横方向の平面結合",
-        "merge_horizontal_help": "横方向に色が一致していれば長方形で代替し平面の数を大幅に減らします。1Pixelごといじりたいのであればこのチェックを外してください。",
+        "merge_horizontal_label": "平面結合",
+        "merge_horizontal_help": "同じ色の平面を長方形で代替し、同じ長さが縦に連続する場合は縦方向にも結合します。平面の数を大幅に減らします。1Pixelごといじりたいのであればこのチェックを外してください。",
         "plane_size_label": "平面の大きさ",
         "plane_size_help": "1.0が現在の大きさ。小さくすると文字がスカスカになります。ドット感のある文字の描写に使います。",
         "x_spacing_label": "横方向の間隔",
@@ -58,7 +74,7 @@ TRANSLATIONS = {
         "error_no_text": "テキストが入力されていません",
         "generating": "シーンを生成中...",
         "success_generate": "生成完了！ ({count} 個の平面)",
-        "preview_title": "文字生成イメージ(実際とは異なる場合があります)",
+        "preview_title": "文字生成イメージ",
         "original_image": "元のテキスト画像",
         "pixel_data": "ピクセルデータ ({width}×{height})",
         "scene_info_title": "シーン情報",
@@ -69,6 +85,8 @@ TRANSLATIONS = {
         "error_occurred": "エラーが発生しました:",
         "font_not_found": "フォントが見つかりません",
         "default_font_used": "デフォルトフォントを使用しています",
+        "scene_title_prefix": "テキスト: ",
+        "folder_title_prefix": "テキスト_",
     },
     "en": {
         "title": "Digital Craft Calligrapher",
@@ -81,7 +99,23 @@ Turn **Antialiasing** OFF and enable **Horizontal plane merging** to minimize th
 
 You can also reduce plane count by lowering **Resolution per character**, but this decreases text resolution and readability.
 If you must reduce plane count, adjust this parameter to find a good balance.
+
+#### I forgot which settings I used!
+
+The parameters are saved inside the **"Text Info"** folder in the generated scene.
 """,
+        "metadata_folder": "Text Info",
+        "meta_font": "Font",
+        "meta_color": "Color",
+        "meta_alpha": "Opacity",
+        "meta_text_height": "Text height",
+        "meta_resolution": "Resolution",
+        "meta_antialias": "Antialiasing",
+        "meta_aa_color": "AA color",
+        "meta_merge_horizontal": "Merge horizontal",
+        "meta_plane_size": "Plane size",
+        "meta_plane_type": "Plane type",
+        "meta_light_influence": "Light influence",
         "param_settings": "Parameter Settings",
         "text_input": "Text",
         "text_placeholder": "Enter text here",
@@ -96,8 +130,8 @@ If you must reduce plane count, adjust this parameter to find a good balance.
         "resolution_help": "Pixel fineness of text. Higher values produce cleaner text but heavier scenes",
         "antialias_label": "Use antialiasing",
         "antialias_color_label": "Antialiasing color",
-        "merge_horizontal_label": "Horizontal plane merging",
-        "merge_horizontal_help": "Replaces matching horizontal colors with rectangles to greatly reduce plane count. Uncheck to edit per pixel.",
+        "merge_horizontal_label": "Plane merging",
+        "merge_horizontal_help": "Replaces matching colors with rectangles and also merges vertically when runs have the same length. Greatly reduces plane count. Uncheck to edit per pixel.",
         "plane_size_label": "Plane size",
         "plane_size_help": "1.0 is current size. Smaller values make text sparse. Used for pixel-art style text.",
         "x_spacing_label": "Horizontal spacing",
@@ -112,7 +146,7 @@ If you must reduce plane count, adjust this parameter to find a good balance.
         "error_no_text": "No text entered",
         "generating": "Generating scene...",
         "success_generate": "Generation complete! ({count} planes)",
-        "preview_title": "Text generation preview (may differ from actual)",
+        "preview_title": "Text generation preview",
         "original_image": "Original text image",
         "pixel_data": "Pixel data ({width}×{height})",
         "scene_info_title": "Scene Info",
@@ -123,6 +157,8 @@ If you must reduce plane count, adjust this parameter to find a good balance.
         "error_occurred": "An error occurred:",
         "font_not_found": "Font not found",
         "default_font_used": "Using default font",
+        "scene_title_prefix": "Text: ",
+        "folder_title_prefix": "Text_",
     },
 }
 
@@ -323,6 +359,7 @@ def build_char_folders(
     """文字ごとの平面とフォルダを生成し、中心比率に沿って配置する。"""
     char_folders = []
     plane_count = 0
+    plane_count_horizontal = 0
 
     for index, char in enumerate(text):
         # 左右反転を補正し、座標系の向きに合わせる。
@@ -332,7 +369,7 @@ def build_char_folders(
         # 文字画像の左端位置（X）を、文字ごとの解像度に基づいて配置する。
         char_start_x = global_start_x + index * per_char_resolution * spacing
         center_x = char_start_x + center_col * spacing
-        planes = pixels_to_planes(
+        planes, planes_horizontal = pixels_to_planes(
             char_pixels,
             plane_template,
             spacing=spacing,
@@ -350,6 +387,7 @@ def build_char_folders(
         for plane in planes:
             plane["data"]["position"]["x"] -= center_x
         plane_count += len(planes)
+        plane_count_horizontal += planes_horizontal
 
         # PIL上の中心比率を、シーンのX座標へ変換する。
         desired_center_x = global_start_x + (grid_width - 1) * spacing * (
@@ -364,7 +402,7 @@ def build_char_folders(
         char_folder["data"]["treeState"] = 1
         char_folders.append(char_folder)
 
-    return char_folders, plane_count
+    return char_folders, plane_count, plane_count_horizontal
 
 
 def render_preview(original_img, preview_pixels, grid_width, grid_height, lang="ja"):
@@ -381,17 +419,36 @@ def render_preview(original_img, preview_pixels, grid_width, grid_height, lang="
     st.image(preview_img, width="content")
 
 
-def render_scene_info(scene, plane_count, raw_plane_count, lang="ja"):
+def render_scene_info(
+    scene, plane_count, plane_count_horizontal, raw_plane_count, lang="ja"
+):
     st.subheader(f"📝 {get_text('scene_info_title', lang)}")
-    info_col1, info_col2 = st.columns(2)
+    info_col1, info_col2, info_col3 = st.columns(3)
     with info_col1:
         st.metric(get_text("plane_count", lang), f"{plane_count}")
     with info_col2:
         if raw_plane_count is not None:
             delta = raw_plane_count - plane_count
             delta_text = f"-{delta}" if delta >= 0 else f"+{abs(delta)}"
+            horizontal_delta = raw_plane_count - plane_count_horizontal
+            horizontal_delta_text = (
+                f"-{horizontal_delta}"
+                if horizontal_delta >= 0
+                else f"+{abs(horizontal_delta)}"
+            )
             st.metric(
-                get_text("plane_reduction", lang),
+                f"{get_text('plane_reduction', lang)}(横)",
+                horizontal_delta_text,
+                f"{plane_count_horizontal}/{raw_plane_count}",
+            )
+        else:
+            st.metric(get_text("plane_reduction", lang), "-", "-")
+    with info_col3:
+        if raw_plane_count is not None:
+            delta = raw_plane_count - plane_count
+            delta_text = f"-{delta}" if delta >= 0 else f"+{abs(delta)}"
+            st.metric(
+                f"{get_text('plane_reduction', lang)}(縦)",
                 delta_text,
                 f"{plane_count}/{raw_plane_count}",
             )
@@ -1158,6 +1215,8 @@ def pixels_to_planes(
     """ピクセルデータから平面オブジェクトを生成"""
     height, width = pixels.shape
     planes = []
+    runs = []
+    runs_by_row = [[] for _ in range(height)]
     if color is None:
         color = {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0}
     if edge_color is None:
@@ -1172,13 +1231,29 @@ def pixels_to_planes(
 
     def flush_run(run_start, run_end, run_color, row_index):
         run_length = run_end - run_start + 1
+        run_info = {
+            "start": run_start,
+            "end": run_end,
+            "length": run_length,
+            "row": row_index,
+            "color": run_color,
+        }
+        runs.append(run_info)
+        runs_by_row[row_index].append(run_info)
+
+    def add_plane(run_start, run_end, run_color, row_start, row_end):
+        run_length = run_end - run_start + 1
+        run_height = row_end - row_start + 1
         x_first = start_x + run_start * spacing
         x_last = start_x + run_end * spacing
+        z_first = start_z + row_start * spacing
+        z_last = start_z + row_end * spacing
         x = (x_first + x_last) / 2
-        z = start_z + row_index * spacing
+        z = (z_first + z_last) / 2
         y = 0.0
         plane = create_plane(plane_template, x, y, z, run_color, scale)
         plane["data"]["scale"]["x"] = scale * run_length
+        plane["data"]["scale"]["z"] = scale * run_height
         planes.append(plane)
 
     for row in range(height):
@@ -1215,13 +1290,64 @@ def pixels_to_planes(
         if run_start is not None:
             flush_run(run_start, run_end, run_color, row)
 
-    return planes
+    if not merge_horizontal:
+        for run in runs:
+            add_plane(run["start"], run["end"], run["color"], run["row"], run["row"])
+        return planes, len(runs)
+
+    def color_key(color_value):
+        return (
+            color_value["r"],
+            color_value["g"],
+            color_value["b"],
+            color_value["a"],
+        )
+
+    active_runs = {}
+    for row in range(height):
+        row_runs = runs_by_row[row]
+        next_active = {}
+        for run in row_runs:
+            key = (run["start"], run["end"], color_key(run["color"]))
+            if key in active_runs and active_runs[key]["row_end"] == row - 1:
+                active_runs[key]["row_end"] = row
+                next_active[key] = active_runs[key]
+            else:
+                next_active[key] = {
+                    "start": run["start"],
+                    "end": run["end"],
+                    "color": run["color"],
+                    "row_start": row,
+                    "row_end": row,
+                }
+
+        for key, active in active_runs.items():
+            if key not in next_active:
+                add_plane(
+                    active["start"],
+                    active["end"],
+                    active["color"],
+                    active["row_start"],
+                    active["row_end"],
+                )
+        active_runs = next_active
+
+    for active in active_runs.values():
+        add_plane(
+            active["start"],
+            active["end"],
+            active["color"],
+            active["row_start"],
+            active["row_end"],
+        )
+
+    return planes, len(runs)
 
 
-def build_metadata_folder(folder_obj, metadata: dict):
-    """生成時のパラメータを子フォルダ名として埋め込んだ「文字情報」フォルダを作成する。"""
+def build_metadata_folder(folder_obj, metadata: dict, lang="ja"):
+    """生成時のパラメータを子フォルダ名として埋め込んだ情報フォルダを作成する。"""
     info_folder = copy.deepcopy(folder_obj)
-    info_folder["data"]["name"] = "文字情報"
+    info_folder["data"]["name"] = get_text("metadata_folder", lang)
     info_folder["data"]["treeState"] = 1
     info_folder["data"]["child"] = []
 
@@ -1253,6 +1379,7 @@ def generate_text_scene(
     merge_horizontal=False,
     merge_color_threshold=0.05,
     generation_metadata=None,
+    lang="ja",
 ):
     """テキストから3Dシーンを生成"""
     # spacing = scale × 0.2 の関係を利用
@@ -1293,7 +1420,7 @@ def generate_text_scene(
     preview_pixels = build_preview_from_image(img, grid_width, grid_height)
 
     # 文字ごとの平面を構築し、フォルダにまとめる。
-    char_folders, plane_count = build_char_folders(
+    char_folders, plane_count, plane_count_horizontal = build_char_folders(
         text,
         char_pixels_list,
         char_center_cols,
@@ -1320,7 +1447,7 @@ def generate_text_scene(
     scene.dataVersion = template_scene.dataVersion
     scene.user_id = template_scene.user_id
     scene.data_id = str(uuid.uuid4())
-    scene.title = f"テキスト: {text}"
+    scene.title = f"{get_text('scene_title_prefix', lang)}{text}"
     scene.unknown_1 = template_scene.unknown_1
     scene.unknown_2 = template_scene.unknown_2
     scene.unknown_3 = template_scene.unknown_3
@@ -1328,19 +1455,26 @@ def generate_text_scene(
     scene.image = template_scene.image
 
     new_folder = copy.deepcopy(folder_obj)
-    new_folder["data"]["name"] = f"テキスト_{text}"
+    new_folder["data"]["name"] = f"{get_text('folder_title_prefix', lang)}{text}"
     new_folder["data"]["treeState"] = 1
 
     # 文字情報フォルダを先頭に追加（再現用メタデータ）
     if generation_metadata:
-        metadata_folder = build_metadata_folder(folder_obj, generation_metadata)
+        metadata_folder = build_metadata_folder(folder_obj, generation_metadata, lang)
         new_folder["data"]["child"] = [metadata_folder] + char_folders
     else:
         new_folder["data"]["child"] = char_folders
 
     scene.dicObject = {folder_key: new_folder}
 
-    return scene, img, preview_pixels, plane_count, raw_plane_count
+    return (
+        scene,
+        img,
+        preview_pixels,
+        plane_count,
+        plane_count_horizontal,
+        raw_plane_count,
+    )
 
 
 # メイン UI
@@ -1410,7 +1544,7 @@ try:
         with col2:
             threshold = 1
 
-        antialias = st.checkbox(get_text("antialias_label", lang), value=True)
+        antialias = st.checkbox(get_text("antialias_label", lang), value=False)
         edge_color_hex = st.color_picker(
             get_text("antialias_color_label", lang), value="#000000"
         )
@@ -1472,17 +1606,21 @@ try:
 
                     # 再現用メタデータを構築
                     generation_metadata = {
-                        "フォント": selected_font.name if selected_font else "default",
-                        "色": color_hex,
-                        "透明度": color_alpha,
-                        "文字の高さ": text_height,
-                        "解像度": per_char_resolution,
-                        "アンチエイリアス": "ON" if antialias else "OFF",
-                        "AA色": edge_color_hex,
-                        "横方向結合": "ON" if merge_horizontal else "OFF",
-                        "平面サイズ": plane_size_factor,
-                        "平面タイプ": plane_preset_key,
-                        "ライト影響度": light_cancel,
+                        get_text("meta_font", lang): (
+                            selected_font.name if selected_font else "default"
+                        ),
+                        get_text("meta_color", lang): color_hex,
+                        get_text("meta_alpha", lang): color_alpha,
+                        get_text("meta_text_height", lang): text_height,
+                        get_text("meta_resolution", lang): per_char_resolution,
+                        get_text("meta_antialias", lang): "ON" if antialias else "OFF",
+                        get_text("meta_aa_color", lang): edge_color_hex,
+                        get_text("meta_merge_horizontal", lang): (
+                            "ON" if merge_horizontal else "OFF"
+                        ),
+                        get_text("meta_plane_size", lang): plane_size_factor,
+                        get_text("meta_plane_type", lang): plane_preset_key,
+                        get_text("meta_light_influence", lang): light_cancel,
                     }
 
                     (
@@ -1490,6 +1628,7 @@ try:
                         original_img,
                         preview_pixels,
                         plane_count,
+                        plane_count_horizontal,
                         raw_plane_count,
                     ) = generate_text_scene(
                         text=text_input,
@@ -1518,6 +1657,7 @@ try:
                         merge_horizontal=merge_horizontal,
                         merge_color_threshold=merge_color_threshold,
                         generation_metadata=generation_metadata,
+                        lang=lang,
                     )
 
                     st.success(
@@ -1531,7 +1671,13 @@ try:
                         layout["grid_height"],
                         lang,
                     )
-                    render_scene_info(scene, plane_count, raw_plane_count, lang)
+                    render_scene_info(
+                        scene,
+                        plane_count,
+                        plane_count_horizontal,
+                        raw_plane_count,
+                        lang,
+                    )
 
                     # ダウンロードボタン
                     filename = build_scene_filename(text_input)
