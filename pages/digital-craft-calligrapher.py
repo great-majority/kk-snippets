@@ -51,7 +51,8 @@ TRANSLATIONS = {
         "color_label": "色",
         "alpha_label": "色の透明度(マップ平面のみ有効)",
         "text_size_title": "文字の大きさ",
-        "text_size_help": "文字の縦幅。0.1で一文字がキャラの手のひらほどの大きさ、1.7でキャラの身長ほどの大きさになります。",
+        "text_size_help": "文字の縦幅。0.1で一文字がキャラの手のひらほどの大きさ、0.4でキャラの頭ほどの大きさになります。",
+        "text_size_example": "フォントサイズの例",
         "height_label": "縦幅",
         "advanced_settings": "詳細設定",
         "resolution_label": "一文字あたり細かさ",
@@ -123,7 +124,8 @@ The parameters are saved inside the **"Text Info"** folder in the generated scen
         "color_label": "Color",
         "alpha_label": "Color transparency (Map plane only)",
         "text_size_title": "Text Size",
-        "text_size_help": "Text height. 0.1 is about the size of a character's palm, 1.7 is about character height.",
+        "text_size_help": "Text height. 0.1 is about the size of a character's palm, 0.4 is about character's head.",
+        "text_size_example": "Font size example",
         "height_label": "Height",
         "advanced_settings": "Advanced Settings",
         "resolution_label": "Resolution per character",
@@ -1515,6 +1517,10 @@ try:
     # 文字の大きさ（縦幅）
     st.subheader(f"📏 {get_text('text_size_title', lang)}")
     st.text(get_text("text_size_help", lang))
+
+    with st.expander(get_text("text_size_example", lang), expanded=False):
+        st.markdown("![font size example](https://i.imgur.com/Vozo2EX.png)")
+
     text_height = st.slider(
         get_text("height_label", lang),
         min_value=0.01,
