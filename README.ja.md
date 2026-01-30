@@ -45,3 +45,8 @@ https://kk-snippets.streamlit.app/digital-craft-calligrapher
 https://kk-snippets.streamlit.app/digital-craft-item-converter
 
 デジタルクラフトのシーンデータ内のプレーンアイテムをマップライト/キャラライト間で変換するツールです。キャラライトからマップライトへの変換時は、アイテムのアルファ値（透明度）も調整できます。
+
+### デジクラシーンデータビューア
+https://kk-snippets.streamlit.app/digital-craft-data-viewer
+
+デジタルクラフトのシーンデータに含まれている情報を集計・表示するツールです。全オブジェクト数、タイプ別オブジェクト数（キャラクター、アイテム、フォルダ、ルート、カメラ）、キャラクター情報とヘッダーのユニーク値、(group, category, no)ペアでのアイテム統計、フォルダ構造などを確認できます。
