@@ -51,4 +51,4 @@ A tool for converting plane items between Map Object and Character Object in Dig
 ### Digital Craft Scene Data Viewer
 https://kk-snippets.streamlit.app/digital-craft-data-viewer
 
-A tool for analyzing and displaying information contained in Digital Craft scene data. It shows total object counts, object counts by type (Character, Item, Folder, Route, Camera), character information with unique headers, item statistics by (group, category, no) pairs, folder structure, and more.
+A tool for analyzing and displaying information contained in Digital Craft scene data. It shows total object counts, object counts by type (Character, Item, Folder, Route, Camera), character information with unique headers, item statistics by (group, category, no) pairs, folder structure, and more. You can also download and extract individual characters from the scene.
