@@ -306,7 +306,9 @@ DEFAULT_GAMEINFO_AC = {"version": "0.0.0"}
 FONT_PATH = "pages/digital-craft-calligrapher-data/MPLUSRounded1c-Regular.ttf"
 
 
-def create_placeholder_image(game_type="", name="", scene_title="", width=252, height=352):
+def create_placeholder_image(
+    game_type="", name="", scene_title="", width=252, height=352
+):
     """プレースホルダー画像を生成してPNGバイト列として返す
 
     Args:
@@ -339,13 +341,18 @@ def create_placeholder_image(game_type="", name="", scene_title="", width=252, h
     if name:
         # 名前が長い場合は複数行に分割
         max_chars_per_line = 10
-        lines = [name[i : i + max_chars_per_line] for i in range(0, len(name), max_chars_per_line)]
+        lines = [
+            name[i : i + max_chars_per_line]
+            for i in range(0, len(name), max_chars_per_line)
+        ]
         y_start = height // 2 - (len(lines) * 25) // 2
         for i, line in enumerate(lines):
             bbox = draw.textbbox((0, 0), line, font=font_small)
             text_width = bbox[2] - bbox[0]
             x = (width - text_width) // 2
-            draw.text((x, y_start + i * 25), line, fill=(255, 255, 255), font=font_small)
+            draw.text(
+                (x, y_start + i * 25), line, fill=(255, 255, 255), font=font_small
+            )
 
     # 抽出元シーン名を下部に描画
     if scene_title:
@@ -388,7 +395,9 @@ def set_character_image(chara, name="", scene_title=""):
             chara.image = chara.face_image
     elif header == "【SVChara】":
         # サマすく: GameParameter_SV と GameInfo_SV を追加してプレースホルダー画像を設定
-        placeholder = create_placeholder_image(game_type="SV", name=name, scene_title=scene_title)
+        placeholder = create_placeholder_image(
+            game_type="SV", name=name, scene_title=scene_title
+        )
         chara.image = placeholder
         if not hasattr(chara, "GameParameter_SV"):
             chara.GameParameter_SV = StubBlockData("GameParameter_SV", "0.0.0")
@@ -404,7 +413,9 @@ def set_character_image(chara, name="", scene_title=""):
         chara.original_lstinfo_order = chara.blockdata
     elif header == "【ACChara】":
         # アイコミ: GameParameter_AC と GameInfo_AC を追加してプレースホルダー画像を設定
-        placeholder = create_placeholder_image(game_type="AC", name=name, scene_title=scene_title)
+        placeholder = create_placeholder_image(
+            game_type="AC", name=name, scene_title=scene_title
+        )
         chara.image = placeholder
         if not hasattr(chara, "GameParameter_AC"):
             chara.GameParameter_AC = StubBlockData("GameParameter_AC", "0.0.0")
@@ -469,7 +480,9 @@ def analyze_scene(hs):
                     if lastname or firstname:
                         name = f"{lastname} {firstname}".strip()
 
-                stats["characters"].append({"name": name, "header": header, "data": chara})
+                stats["characters"].append(
+                    {"name": name, "header": header, "data": chara}
+                )
                 stats["character_headers"][header] += 1
 
         # 1: Item (OIItemInfo)
@@ -565,8 +578,16 @@ if uploaded_file is not None:
         # シーンメタ情報
         st.dataframe(
             {
-                "項目": [get_text("scene_user_id", lang), get_text("scene_data_id", lang), get_text("scene_version", lang)],
-                "値": [getattr(hs, "user_id", "N/A"), getattr(hs, "data_id", "N/A"), getattr(hs, "version", "N/A")],
+                "項目": [
+                    get_text("scene_user_id", lang),
+                    get_text("scene_data_id", lang),
+                    get_text("scene_version", lang),
+                ],
+                "値": [
+                    getattr(hs, "user_id", "N/A"),
+                    getattr(hs, "data_id", "N/A"),
+                    getattr(hs, "version", "N/A"),
+                ],
             },
             hide_index=True,
             width="stretch",
