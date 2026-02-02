@@ -57,6 +57,7 @@ TRANSLATIONS = {
         "item_unique": "ユニーク",
         "item_list": "アイテム一覧",
         "item_category_col": "分類",
+        "item_name_col": "アイテム名",
         "item_no_col": "no",
         "item_count_col": "個数",
         "route_stats_title": "ルート統計",
@@ -114,6 +115,7 @@ A tool to display and aggregate information contained in Digital Craft/Honey Com
         "item_unique": "unique",
         "item_list": "Item List",
         "item_category_col": "Category",
+        "item_name_col": "Item Name",
         "item_no_col": "no",
         "item_count_col": "Count",
         "route_stats_title": "Route Statistics",
@@ -142,122 +144,55 @@ def get_type_name(type_id, lang="ja"):
     return type_names.get(type_id, f"Unknown ({type_id})")
 
 
-# アイテム分類名マッピング (unknown_1, group, category) -> 分類名
-ITEM_CATEGORY_NAMES = {
-    # デジクラ (unknown_1=0)
-    (0, 0, 0): "デジクラ -> 基本形 -> 通常",
-    (0, 0, 1): "デジクラ -> 基本形 -> キャラ",
-    (0, 10, 2): "デジクラ -> ギミック -> obj有り",
-    (0, 10, 3): "デジクラ -> ギミック -> obj無し",
-    # ハニカム (unknown_1=1)
-    (1, 1, 2): "ハニカム -> ベース",
-    (1, 2, 4): "ハニカム -> 家具 -> 家具全般",
-    (1, 2, 5): "ハニカム -> 家具 -> 収納",
-    (1, 2, 6): "ハニカム -> 家具 -> 水回り",
-    (1, 3, 7): "ハニカム -> オブジェ -> 自然",
-    (1, 3, 8): "ハニカム -> オブジェ -> 置物",
-    (1, 3, 9): "ハニカム -> オブジェ -> 電化製品・照明",
-    (1, 3, 10): "ハニカム -> オブジェ -> その他",
-    (1, 5, 12): "ハニカム -> 小物 -> 小物全般",
-    (1, 6, 14): "ハニカム -> 小物 -> キャラ -> 髪",
-    (1, 6, 15): "ハニカム -> 小物 -> キャラ -> 頭",
-    (1, 6, 16): "ハニカム -> 小物 -> キャラ -> 顔",
-    (1, 6, 17): "ハニカム -> 小物 -> キャラ -> 首",
-    (1, 6, 18): "ハニカム -> 小物 -> キャラ -> 胴",
-    (1, 6, 19): "ハニカム -> 小物 -> キャラ -> 腰",
-    (1, 6, 20): "ハニカム -> 小物 -> キャラ -> 脚",
-    (1, 6, 21): "ハニカム -> 小物 -> キャラ -> 腕",
-    (1, 6, 22): "ハニカム -> 小物 -> キャラ -> 手",
-    (1, 6, 200): "ハニカム -> 小物 -> キャラ -> その他",
-    (1, 6, 201): "ハニカム -> 小物 -> キャラ -> リーパー",
-    (1, 6, 202): "ハニカム -> 小物 -> キャラ -> バニー",
-    (1, 6, 203): "ハニカム -> 小物 -> キャラ -> ハロウィンウィッチ",
-    (1, 7, 23): "ハニカム -> 小物 -> Hアイテム",
-    (1, 12, 30): "ハニカム -> 小物 -> エフェクト",
-    # ドルチェ (unknown_1=2)
-    (2, 3, 206): "ドルチェ -> オブジェ -> アイテム",
-    (2, 3, 208): "ドルチェ -> オブジェ -> クリスマス",
-    (2, 3, 210): "ドルチェ -> オブジェ -> 追加01",
-    (2, 3, 212): "ドルチェ -> オブジェ -> 追加02",
-    (2, 3, 216): "ドルチェ -> オブジェ -> 追加03",
-    (2, 6, 204): "ドルチェ -> キャラ -> アクセサリー",
-    (2, 6, 205): "ドルチェ -> キャラ -> その他",
-    (2, 6, 207): "ドルチェ -> キャラ -> ホワイトドレス",
-    (2, 6, 209): "ドルチェ -> キャラ -> クリスマス",
-    (2, 6, 215): "ドルチェ -> キャラ -> ロボ",
-    (2, 6, 218): "ドルチェ -> キャラ -> 追加03",
-    (2, 7, 23): "ドルチェ -> Hアイテム -> おもちゃ",
-    (2, 9, 219): "ドルチェ -> 2D効果 -> 画面効果",
-    (2, 13, 214): "ドルチェ -> エフェクト -> パーティクル",
-    (2, 15, 211): "ドルチェ -> FKアイテム -> 通常",
-    (2, 15, 220): "ドルチェ -> FKアイテム -> H",
-    # サマバケ (unknown_1=3)
-    (3, 1, 2): "サマバケ -> ベース -> 設置物",
-    (3, 1, 3): "サマバケ -> ベース -> 建物",
-    (3, 2, 4): "サマバケ -> 家具 -> 家具全般",
-    (3, 2, 5): "サマバケ -> 家具 -> 収納",
-    (3, 3, 7): "サマバケ -> オブジェ -> 自然",
-    (3, 3, 8): "サマバケ -> オブジェ -> 置物",
-    (3, 3, 9): "サマバケ -> オブジェ -> 電化製品・照明",
-    (3, 3, 35): "サマバケ -> オブジェ -> サイバーパンク",
-    (3, 3, 36): "サマバケ -> オブジェ -> 小悪魔",
-    (3, 3, 40): "サマバケ -> オブジェ -> マミーウルフ",
-    (3, 3, 42): "サマバケ -> オブジェ -> ホリデー",
-    (3, 3, 47): "サマバケ -> オブジェ -> バレンタイン",
-    (3, 4, 11): "サマバケ -> 食材 -> 飲食物",
-    (3, 5, 12): "サマバケ -> 小物 -> 小物全般",
-    (3, 6, 14): "サマバケ -> キャラ -> 髪",
-    (3, 6, 15): "サマバケ -> キャラ -> 頭",
-    (3, 6, 16): "サマバケ -> キャラ -> 顔",
-    (3, 6, 17): "サマバケ -> キャラ -> 首",
-    (3, 6, 18): "サマバケ -> キャラ -> 胴",
-    (3, 6, 19): "サマバケ -> キャラ -> 腰",
-    (3, 6, 20): "サマバケ -> キャラ -> 脚",
-    (3, 6, 21): "サマバケ -> キャラ -> 腕",
-    (3, 6, 22): "サマバケ -> キャラ -> 手",
-    (3, 6, 37): "サマバケ -> キャラ -> 雷神",
-    (3, 6, 38): "サマバケ -> キャラ -> サイバーパンク",
-    (3, 6, 39): "サマバケ -> キャラ -> 小悪魔",
-    (3, 6, 41): "サマバケ -> キャラ -> マミーウルフ",
-    (3, 6, 43): "サマバケ -> キャラ -> ガーデニング",
-    (3, 6, 44): "サマバケ -> キャラ -> 風神",
-    (3, 6, 45): "サマバケ -> キャラ -> ホリデー",
-    (3, 6, 46): "サマバケ -> キャラ -> バレンタイン",
-    (3, 6, 48): "サマバケ -> キャラ -> 牛柄",
-    (3, 12, 29): "サマバケ -> エフェクト -> 固定エフェクト",
-    # アイコミ (unknown_1=4)
-    (4, 1, 2): "アイコミ -> ベース -> 地形",
-    (4, 1, 3): "アイコミ -> ベース -> 設置物",
-    (4, 1, 4): "アイコミ -> ベース -> 建物",
-    (4, 2, 5): "アイコミ -> 家具 -> 家具全般",
-    (4, 2, 7): "アイコミ -> 家具 -> 水回り",
-    (4, 3, 8): "アイコミ -> オブジェ -> 自然",
-    (4, 3, 9): "アイコミ -> オブジェ -> 置物",
-    (4, 3, 10): "アイコミ -> オブジェ -> 電化製品・照明",
-    (4, 4, 12): "アイコミ -> 食材 -> 飲食物",
-    (4, 5, 13): "アイコミ -> 小物 -> 小物全般",
-    (4, 6, 15): "アイコミ -> キャラ -> 髪",
-    (4, 6, 16): "アイコミ -> キャラ -> 頭",
-    (4, 6, 17): "アイコミ -> キャラ -> 顔",
-    (4, 6, 18): "アイコミ -> キャラ -> 首",
-    (4, 6, 19): "アイコミ -> キャラ -> 胴",
-    (4, 6, 22): "アイコミ -> キャラ -> 腕",
-    (4, 6, 23): "アイコミ -> キャラ -> 手",
-    (4, 6, 36): "アイコミ -> キャラ -> ?",
-    (4, 6, 37): "アイコミ -> キャラ -> ?",
-    (4, 6, 38): "アイコミ -> キャラ -> ?",
-    (4, 6, 39): "アイコミ -> キャラ -> ?",
-    (4, 6, 40): "アイコミ -> キャラ -> ?",
-    (4, 6, 41): "アイコミ -> キャラ -> ?",
-    (4, 6, 42): "アイコミ -> キャラ -> ?",
-    (4, 7, 24): "アイコミ -> Hアイテム -> おもちゃ",
-}
+# ========================================
+# アイテムデータ用のヘルパー
+# ========================================
+
+ITEMS_PARQUET_PATH = (
+    Path(__file__).parent / "digital-craft-data-viewer-data" / "items.parquet"
+)
+
+
+@st.cache_data
+def load_items_data():
+    """items.parquetを読み込んで辞書として返す"""
+    if not ITEMS_PARQUET_PATH.exists():
+        return {}, {}
+    df = pd.read_parquet(ITEMS_PARQUET_PATH)
+    # (title, group, category, no) -> アイテム情報 の辞書を作成
+    items_dict = {}
+    # (title, group, category) -> カテゴリ名 の辞書を作成
+    category_dict = {}
+    for _, row in df.iterrows():
+        key = (row["title"], row["group"], row["category"], row["no"])
+        category_name = (
+            f"{row['title_name']} -> {row['group_name']} -> {row['category_name']}"
+        )
+        item_info = {
+            "category_name": category_name,
+            "item_name": row["item_name"],
+            "full_name": f"{category_name} -> {row['item_name']}",
+        }
+        items_dict[key] = item_info
+        # カテゴリ名の辞書も構築
+        cat_key = (row["title"], row["group"], row["category"])
+        if cat_key not in category_dict:
+            category_dict[cat_key] = category_name
+    return items_dict, category_dict
 
 
 def get_item_category_name(unknown_1, group, category):
     """(unknown_1, group, category) から分類名を取得"""
+    _, category_dict = load_items_data()
     key = (unknown_1, group, category)
-    return ITEM_CATEGORY_NAMES.get(key, f"不明 ({unknown_1}, {group}, {category})")
+    return category_dict.get(key, f"不明 ({unknown_1}, {group}, {category})")
+
+
+def get_item_info(unknown_1, group, category, no):
+    """(unknown_1, group, category, no) からアイテム情報を取得"""
+    items_dict, _ = load_items_data()
+    key = (unknown_1, group, category, no)
+    return items_dict.get(key)
 
 
 # ========================================
@@ -716,18 +651,26 @@ if uploaded_file is not None:
             )
 
             with st.expander(get_text("item_list", lang)):
-                item_df = [
-                    {
-                        get_text("item_category_col", lang): get_item_category_name(
+                item_df = []
+                for (group, category, no, unknown_1), count in sorted(
+                    stats["item_keys"].items()
+                ):
+                    item_info = get_item_info(unknown_1, group, category, no)
+                    if item_info:
+                        category_name = item_info["category_name"]
+                        item_name = item_info["item_name"]
+                    else:
+                        category_name = get_item_category_name(
                             unknown_1, group, category
-                        ),
-                        get_text("item_no_col", lang): no,
-                        get_text("item_count_col", lang): count,
-                    }
-                    for (group, category, no, unknown_1), count in sorted(
-                        stats["item_keys"].items()
+                        )
+                        item_name = f"不明 ({no})"
+                    item_df.append(
+                        {
+                            get_text("item_category_col", lang): category_name,
+                            get_text("item_name_col", lang): item_name,
+                            get_text("item_count_col", lang): count,
+                        }
                     )
-                ]
                 st.dataframe(item_df, width="stretch")
 
         # 階層構造情報
