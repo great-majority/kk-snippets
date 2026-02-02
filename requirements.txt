@@ -1,4 +1,4 @@
-kkloader==0.1.17
+kkloader==0.1.18
 streamlit==1.51.0
 pyvis==0.3.2
 networkx==3.3
