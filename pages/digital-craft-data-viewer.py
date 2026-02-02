@@ -1,11 +1,13 @@
 import copy
 import io
 from collections import Counter
+from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+import pandas as pd
 import streamlit as st
 from kkloader import HoneycomeSceneData
 from kkloader.KoikatuCharaData import BlockData
+from PIL import Image, ImageDraw, ImageFont
 
 # ========================================
 # i18n対応: 多言語辞書
@@ -44,6 +46,7 @@ TRANSLATIONS = {
         "character_list": "キャラクター一覧",
         "character_name": "名前",
         "character_header": "ヘッダー",
+        "character_anime": "アニメ",
         "character_download": "DL",
         "no_characters": "キャラクターが含まれていません",
         "hierarchy_info_title": "階層構造情報",
@@ -100,6 +103,7 @@ A tool to display and aggregate information contained in Digital Craft/Honey Com
         "character_list": "Character List",
         "character_name": "Name",
         "character_header": "Header",
+        "character_anime": "Anime",
         "character_download": "DL",
         "no_characters": "No characters found",
         "hierarchy_info_title": "Hierarchy Information",
@@ -254,6 +258,43 @@ def get_item_category_name(unknown_1, group, category):
     """(unknown_1, group, category) から分類名を取得"""
     key = (unknown_1, group, category)
     return ITEM_CATEGORY_NAMES.get(key, f"不明 ({unknown_1}, {group}, {category})")
+
+
+# ========================================
+# モーション（アニメ）名マッピング
+# ========================================
+
+MOTIONS_PARQUET_PATH = (
+    Path(__file__).parent / "digital-craft-data-viewer-data" / "motions.parquet"
+)
+
+
+@st.cache_data
+def load_motions_data():
+    """motions.parquetを読み込んで辞書として返す"""
+    if not MOTIONS_PARQUET_PATH.exists():
+        return {}
+    df = pd.read_parquet(MOTIONS_PARQUET_PATH)
+    # (title, group, category, no) -> 表示名 の辞書を作成
+    motions_dict = {}
+    for _, row in df.iterrows():
+        key = (row["title"], row["group"], row["category"], row["no"])
+        display_name = f"{row['title_name']} -> {row['group_name']} -> {row['category_name']} -> {row['anime_name']}"
+        motions_dict[key] = display_name
+    return motions_dict
+
+
+def get_anime_display_name(anime_info):
+    """anime_info辞書からアニメの表示名を取得"""
+    if not anime_info:
+        return None
+    title = anime_info.get("title", -1)
+    group = anime_info.get("group", -1)
+    category = anime_info.get("category", -1)
+    no = anime_info.get("no", -1)
+    key = (title, group, category, no)
+    motions_dict = load_motions_data()
+    return motions_dict.get(key, f"不明 ({title}, {group}, {category}, {no})")
 
 
 # ========================================
@@ -480,8 +521,16 @@ def analyze_scene(hs):
                     if lastname or firstname:
                         name = f"{lastname} {firstname}".strip()
 
+                # アニメ情報を取得
+                anime_info = data.get("anime_info")
+
                 stats["characters"].append(
-                    {"name": name, "header": header, "data": chara}
+                    {
+                        "name": name,
+                        "header": header,
+                        "data": chara,
+                        "anime_info": anime_info,
+                    }
                 )
                 stats["character_headers"][header] += 1
 
@@ -608,21 +657,27 @@ if uploaded_file is not None:
             # キャラクター一覧
             st.write(f"**{get_text('character_list', lang)}**")
             # ヘッダー行
-            header_col1, header_col2, header_col3 = st.columns([3, 2, 1])
+            header_col1, header_col2, header_col3, header_col4 = st.columns(
+                [2, 2, 4, 1]
+            )
             header_col1.write(f"**{get_text('character_name', lang)}**")
             header_col2.write(f"**{get_text('character_header', lang)}**")
-            header_col3.write(f"**{get_text('character_download', lang)}**")
+            header_col3.write(f"**{get_text('character_anime', lang)}**")
+            header_col4.write(f"**{get_text('character_download', lang)}**")
             # データ行
             for i, c in enumerate(stats["characters"]):
-                col1, col2, col3 = st.columns([3, 2, 1])
+                col1, col2, col3, col4 = st.columns([2, 2, 4, 1])
                 col1.write(c["name"])
                 col2.write(c["header"])
+                # アニメ情報を表示
+                anime_display = get_anime_display_name(c.get("anime_info"))
+                col3.write(anime_display if anime_display else "-")
                 # headerに応じた画像をセットしてからバイト化
                 chara = c["data"]
                 set_character_image(chara, c["name"], hs.title or "")
                 chara_bytes = bytes(chara)
                 filename = f"{c['name'] or 'character'}_{i}.png"
-                col3.download_button(
+                col4.download_button(
                     label="⬇",
                     data=chara_bytes,
                     file_name=filename,
