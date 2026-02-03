@@ -1,14 +1,11 @@
 import copy
 import io
-import json
-import struct
 import uuid
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, Union
 
 import numpy as np
 import streamlit as st
-from kkloader.funcs import get_png, load_string, load_type, write_string
+from kkloader import HoneycomeSceneData
 from PIL import Image, ImageDraw, ImageFont
 
 # ========================================
@@ -175,8 +172,8 @@ FONT_SIZE = 200
 FONT_DIR = Path(__file__).parent / "digital-craft-calligrapher-data"
 CHAR_CANVAS_PADDING = 5
 PLANE_PRESETS = {
-    "平面(マップ)": {"group": 0, "category": 0, "no": 215},
-    "平面(キャラ)": {"group": 1, "category": 0, "no": 290},
+    "平面(マップ)": {"category": 0, "no": 215},
+    "平面(キャラ)": {"category": 1, "no": 290},
 }
 
 
@@ -469,28 +466,21 @@ TEMPLATE_SCENE_META = {
     "data_id": "deadbeef-dead-beef-dead-beefdeadbeef",
     "title": "テンプレート",
     "unknown_1": 1,
-    "unknown_2": 32,
-    "unknown_3": b"#\\d7\xf1l\xf3\xdb?v\xe0X\xf8\x1cJ\xae\xfc\x10I\x96\x15k*P\xbf*u\x91.Yr\xbe",
-    "unknown_tail": b"0\x00\x00\x00\xee\xaa|\xcfZ\xdc\x97>\x14A\xf6\xfagp'\x84PB\xd3ze_7\xba\xad\xb5\x15\xa8O\xc3F\xd3"
-    b"\x18\x8b\x13&i0\xc9\xa2\x94?\xdcm\\7\x05\xdc\xe0\x00\x00\x00\x9a\xd9\x0e\x878|>=k\x1e\x930"
-    b"S\xe9\xdf\x14e\xf3\x00\xb3b?\xcd\xf5\xa1UW{\x01\x98\xd3ob\xbd\x87\xba\xbf\xa3p\xfd.%\xaf'"
-    b"\xa3\x9d\x10>\x81s\xf2\xc7\x8f\x88\x8b.\x96e%\xc8\x1ba;\x0f[\x1e\xa8\xa2\xdd\xf6(\xea\xeaV\xe9\xa6"
-    b"\x0f\xb8\x15^\xde!X\x8e\xb0\x81\xfb\x87d\x89\x9d\xea\x14R\x988\xb7\xa2s\xba\x0e\xf1x2\xed\xd5U\xf6"
-    b"D\x9bJ\x82\xb9L\x8c\xed\xc3B\xd5\xc25\xe2%Z\xba@sN\x9f/\xac\x15\xedj\xabj\xe7\xed\xc2\xec"
-    b"\xdd\xb83\x11l\xf9?\x95B\xdf\r\x15rb<|V\xe7k~\xf1<Q,*@\tD\x97\x01,s\x1d\x8c\xfe!a\t\xfb6\\:2\xfd"
-    b"7\x00Q\x87\x05\x94*@kk!y\x05\xbf5\xef\x0e's\x03\xf5\t{wTa\xeb\xd65\xbc\xd9\xef\xb1\xabQ\xc2"
-    b"I\xec\x1a50\x00\x00\x00\xf8\xe8\x14J\x87\xe2\x8f8v\x07q\x1d\xf1?v\xf14(% \xea\xcb\xaex=lAln\x01{C"
-    b"\xfd\xe9\xb4\xe4\x8e\xfd\x96\xd7;\x85\xff-fr\x16\xfe`\x00\x00\x00\xa0\x15a\t\x08\x07J\x0c\xac\xe0C>"
-    b"i\x99\xec\xe0y\xd1[MJ\x05\x0c\xa2\xfc\x96\xf6\xee&\x0c\xe1\x00)r)\xb9\xdf\xaa\xb4nV\x10\x0b\xec"
-    b"\xb6t\xa1\xd3\x95AP\xc2\xf0\x8aBd\x83\xd4\xb4p\xf5B\xce\xb7;k\xed\xf6\xfa\xbc\x1eJF\xcbt1\x87=\xebz"
-    b"\xac\xec^\xf7\x15 8i:QUh\x90!1v0\x00\x00\x00`)g\xf9\x1cN\x99\xfb\xc1\x9e\x80\x19\x0c\x96\x16\xe0)t>,"
-    b"\xc8\xc2\xd4t\x89\x98\x91\xd1\xd1\xc4\xd8\xbc\xdf\x92\xcf*b\x0c\x1d\xbaM\xd1\x8a\xf4\x12\x87!\x18"
-    b"@\x00\x00\x00\xaa\xf3\xff\xfb\xf4S\x80R\xda]7\x99\xdeig\xc6&\xd4\x187\x80\n\x80\xcf\x80\xd6Ch"
-    b"\x9amy\xb3X\x18\x88;\xce\xdb\x11&`\x89\x8c\x1c\xb7\x8a\xd8\xfe\x1e\x17\xa9l\x1f\xe4#\xb7"
-    b"\xf4\xdc\xc6kh\xaf\x9aB\x10\x00\x00\x00b\xad\xc5\xdc\xeeXz\xb2\x90\xfb\xa5\xfd\x84b\xafE"
-    b"\x10\x00\x00\x00b\xad\xc5\xdc\xeeXz\xb2\x90\xfb\xa5\xfd\x84b\xafE\x10\x00\x00\x00\xf4+\x98\x84"
-    b'\xde\xc3-\x15\xb0M<\xe2!"\xd5\xa5\x10\x00\x00\x00sR?\xa4b\xb8\t\xa6~\xb0\x10\xd3\xa0\xc9u\x16'
-    b"\x00\x10\x00\x00\x00D\xaa\xee\x9b\xe40^\xf6+\xe7*d\x08H\xe1]\x12\xe3\x80\x90DigitalCraft\xe3\x80\x91",
+    "unknown_2": b"#\\d7\xf1l\xf3\xdb?v\xe0X\xf8\x1cJ\xae\xfc\x10I\x96\x15k*P\xbf*u\x91.Yr\xbe",
+    "unknown_tail_1": b"\xee\xaa|\xcfZ\xdc\x97>\x14A\xf6\xfagp'\x84PB\xd3ze_7\xba\xad\xb5\x15\xa8O\xc3F\xd3\x18\x8b\x13&i0\xc9\xa2\x94?\xdcm\\7\x05\xdc",
+    "unknown_tail_2": b"\x9a\xd9\x0e\x878|>=k\x1e\x930S\xe9\xdf\x14e\xf3\x00\xb3b?\xcd\xf5\xa1UW{\x01\x98\xd3ob\xbd\x87\xba\xbf\xa3p\xfd.%\xaf'\xa3\x9d\x10>\x81s\xf2\xc7\x8f\x88\x8b.\x96e%\xc8\x1ba;\x0f[\x1e\xa8\xa2\xdd\xf6(\xea\xeaV\xe9\xa6\x0f\xb8\x15^\xde!X\x8e\xb0\x81\xfb\x87d\x89\x9d\xea\x14R\x988\xb7\xa2s\xba\x0e\xf1x2\xed\xd5U\xf6D\x9bJ\x82\xb9L\x8c\xed\xc3B\xd5\xc25\xe2%Z\xba@sN\x9f/\xac\x15\xedj\xabj\xe7\xed\xc2\xec\xdd\xb83\x11l\xf9?\x95B\xdf\r\x15rb<|V\xe7k~\xf1<Q,*@\tD\x97\x01,s\x1d\x8c\xfe!a\t\xfb6\\:2\xfd7\x00Q\x87\x05\x94*@kk!y\x05\xbf5\xef\x0e's\x03\xf5\t{wTa\xeb\xd65\xbc\xd9\xef\xb1\xabQ\xc2I\xec\x1a5",
+    "unknown_tail_3": b"\xf8\xe8\x14J\x87\xe2\x8f8v\x07q\x1d\xf1?v\xf14(% \xea\xcb\xaex=lAln\x01{C\xfd\xe9\xb4\xe4\x8e\xfd\x96\xd7;\x85\xff-fr\x16\xfe",
+    "unknown_tail_4": b"\xa0\x15a\t\x08\x07J\x0c\xac\xe0C>i\x99\xec\xe0y\xd1[MJ\x05\x0c\xa2\xfc\x96\xf6\xee&\x0c\xe1\x00)r)\xb9\xdf\xaa\xb4nV\x10\x0b\xec\xb6t\xa1\xd3\x95AP\xc2\xf0\x8aBd\x83\xd4\xb4p\xf5B\xce\xb7;k\xed\xf6\xfa\xbc\x1eJF\xcbt1\x87=\xebz\xac\xec^\xf7\x15 8i:QUh\x90!1v",
+    "unknown_tail_5": b"`)g\xf9\x1cN\x99\xfb\xc1\x9e\x80\x19\x0c\x96\x16\xe0)t>,\xc8\xc2\xd4t\x89\x98\x91\xd1\xd1\xc4\xd8\xbc\xdf\x92\xcf*b\x0c\x1d\xbaM\xd1\x8a\xf4\x12\x87!\x18",
+    "unknown_tail_6": b"\xaa\xf3\xff\xfb\xf4S\x80R\xda]7\x99\xdeig\xc6&\xd4\x187\x80\n\x80\xcf\x80\xd6Ch\x9amy\xb3X\x18\x88;\xce\xdb\x11&`\x89\x8c\x1c\xb7\x8a\xd8\xfe\x1e\x17\xa9l\x1f\xe4#\xb7\xf4\xdc\xc6kh\xaf\x9aB",
+    "unknown_tail_7": b"b\xad\xc5\xdc\xeeXz\xb2\x90\xfb\xa5\xfd\x84b\xafE",
+    "unknown_tail_8": b"b\xad\xc5\xdc\xeeXz\xb2\x90\xfb\xa5\xfd\x84b\xafE",
+    "unknown_tail_9": b'\xf4+\x98\x84\xde\xc3-\x15\xb0M<\xe2!"\xd5\xa5',
+    "unknown_tail_10": b"sR?\xa4b\xb8\t\xa6~\xb0\x10\xd3\xa0\xc9u\x16",
+    "frame_filename": "",
+    "unknown_tail_11": b"D\xaa\xee\x9b\xe40^\xf6+\xe7*d\x08H\xe1]",
+    "footer_marker": "【DigitalCraft】",
+    "unknown_tail_extra": b"",
 }
 TEMPLATE_FOLDER_KEY = 0
 TEMPLATE_FOLDER_DATA = {
@@ -510,12 +500,12 @@ TEMPLATE_PLANE_DATA = {
     "scale": {"x": 1.0, "y": 1.0, "z": 1.0},
     "treeState": 1,
     "visible": True,
-    "unknown_1": 0,
-    "unknown_2": 0,
+    "title": 0,
     "group": 0,
     "category": 0,
     "no": 215,
-    "unknown_3": b"\x00\x00\x00\x00\x00\x00\x80?",
+    "anime_pattern": 0,
+    "anime_speed": 1.0,
     "colors": [
         {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
         {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
@@ -526,52 +516,55 @@ TEMPLATE_PLANE_DATA = {
         {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
         {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
     ],
-    "unknown_4": -1,
-    "unknown_5": False,
+    "shadow_type": -1,
+    "shadow_switch": False,
+    "shadow_strength": 0.0,
     "patterns": [
         {
-            "unknown_float": 1.0,
             "key": 0,
+            "filepath": "",
             "clamp": False,
-            "unknown_bool": False,
             "uv": {"x": 0.0, "y": 0.0, "z": 1.0, "w": 1.0},
+            "rot": 0.0,
         },
         {
-            "unknown_float": 0.0,
             "key": 0,
+            "filepath": "",
             "clamp": False,
-            "unknown_bool": False,
             "uv": {"x": 0.0, "y": 0.0, "z": 1.0, "w": 1.0},
+            "rot": 0.0,
         },
         {
-            "unknown_float": 0.0,
             "key": 0,
+            "filepath": "",
             "clamp": False,
-            "unknown_bool": False,
             "uv": {"x": 0.0, "y": 0.0, "z": 1.0, "w": 1.0},
+            "rot": 0.0,
         },
     ],
-    "unknown_6": b"\x00\x00\x00\x00",
     "alpha": 1.0,
     "line_color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0},
     "line_width": 1.0,
     "emission_color": {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
     "emission_power": 0.0,
     "light_cancel": 0.0,
-    "unknown_7": b"\x00\x00\x00\x00\x00\x00",
-    "unknown_8": '{"x":0.0,"y":0.0,"z":1.0,"w":1.0}',
-    "unknown_9": b"\x00\x00\x00\x00",
+    "panel": {
+        "key": 0,
+        "filepath": "",
+        "clamp": False,
+        "uv": {"x": 0.0, "y": 0.0, "z": 1.0, "w": 1.0},
+        "rot": 0.0,
+    },
     "enable_fk": False,
     "bones": {},
     "enable_dynamic_bone": True,
-    "unknown_10": True,
     "anime_normalized_time": 0.0,
     "child": [],
 }
 
 
-def build_template_scene() -> "HoneycomeSceneDataSimple":
-    scene = HoneycomeSceneDataSimple()
+def build_template_scene() -> "HoneycomeSceneData":
+    scene = HoneycomeSceneData()
     scene.image = None
     scene.version = TEMPLATE_SCENE_META["version"]
     scene.dataVersion = TEMPLATE_SCENE_META["version"]
@@ -580,467 +573,27 @@ def build_template_scene() -> "HoneycomeSceneDataSimple":
     scene.title = TEMPLATE_SCENE_META["title"]
     scene.unknown_1 = TEMPLATE_SCENE_META["unknown_1"]
     scene.unknown_2 = TEMPLATE_SCENE_META["unknown_2"]
-    scene.unknown_3 = TEMPLATE_SCENE_META["unknown_3"]
-    scene.unknown_tail = TEMPLATE_SCENE_META["unknown_tail"]
+    scene.unknown_tail_1 = TEMPLATE_SCENE_META["unknown_tail_1"]
+    scene.unknown_tail_2 = TEMPLATE_SCENE_META["unknown_tail_2"]
+    scene.unknown_tail_3 = TEMPLATE_SCENE_META["unknown_tail_3"]
+    scene.unknown_tail_4 = TEMPLATE_SCENE_META["unknown_tail_4"]
+    scene.unknown_tail_5 = TEMPLATE_SCENE_META["unknown_tail_5"]
+    scene.unknown_tail_6 = TEMPLATE_SCENE_META["unknown_tail_6"]
+    scene.unknown_tail_7 = TEMPLATE_SCENE_META["unknown_tail_7"]
+    scene.unknown_tail_8 = TEMPLATE_SCENE_META["unknown_tail_8"]
+    scene.unknown_tail_9 = TEMPLATE_SCENE_META["unknown_tail_9"]
+    scene.unknown_tail_10 = TEMPLATE_SCENE_META["unknown_tail_10"]
+    scene.frame_filename = TEMPLATE_SCENE_META["frame_filename"]
+    scene.unknown_tail_11 = TEMPLATE_SCENE_META["unknown_tail_11"]
+    scene.footer_marker = TEMPLATE_SCENE_META["footer_marker"]
+    scene.unknown_tail_extra = TEMPLATE_SCENE_META["unknown_tail_extra"]
 
     folder_obj = {"type": 3, "data": copy.deepcopy(TEMPLATE_FOLDER_DATA)}
     folder_obj["data"]["child"] = [
         {"type": 1, "data": copy.deepcopy(TEMPLATE_PLANE_DATA)}
     ]
-    scene.dicObject = {TEMPLATE_FOLDER_KEY: folder_obj}
+    scene.objects = {TEMPLATE_FOLDER_KEY: folder_obj}
     return scene
-
-
-class HoneycomeSceneObjectLoader:
-    """Minimal loader/saver for Honeycome items and folders."""
-
-    _LOAD_DISPATCH = {
-        1: "load_item_info",
-        3: "load_folder_info",
-    }
-
-    _SAVE_DISPATCH = {
-        1: "save_item_info",
-        3: "save_folder_info",
-    }
-
-    @staticmethod
-    def _dispatch_load(
-        data_stream: BinaryIO,
-        obj_type: int,
-        obj_info: Dict[str, Any],
-        version: str = None,
-    ) -> None:
-        method_name = HoneycomeSceneObjectLoader._LOAD_DISPATCH.get(obj_type)
-        if method_name is None:
-            return
-        method = getattr(HoneycomeSceneObjectLoader, method_name)
-        method(data_stream, obj_info, version)
-
-    @staticmethod
-    def _dispatch_save(
-        data_stream: BinaryIO, obj_info: Dict[str, Any], version: str = None
-    ) -> None:
-        obj_type = obj_info.get("type", -1)
-        method_name = HoneycomeSceneObjectLoader._SAVE_DISPATCH.get(obj_type)
-        if method_name is None:
-            raise ValueError(f"Unknown object type: {obj_type}")
-        method = getattr(HoneycomeSceneObjectLoader, method_name)
-        method(data_stream, obj_info, version)
-
-    @staticmethod
-    def _load_vector3(data_stream: BinaryIO) -> Dict[str, float]:
-        return {
-            "x": struct.unpack("f", data_stream.read(4))[0],
-            "y": struct.unpack("f", data_stream.read(4))[0],
-            "z": struct.unpack("f", data_stream.read(4))[0],
-        }
-
-    @staticmethod
-    def _save_vector3(
-        data_stream: BinaryIO, vector3: Dict[str, float], default: float = 0.0
-    ) -> None:
-        data_stream.write(struct.pack("f", vector3.get("x", default)))
-        data_stream.write(struct.pack("f", vector3.get("y", default)))
-        data_stream.write(struct.pack("f", vector3.get("z", default)))
-
-    @staticmethod
-    def _load_object_info_base(data_stream: BinaryIO) -> Dict[str, Any]:
-        return {
-            "dicKey": struct.unpack("i", data_stream.read(4))[0],
-            "position": HoneycomeSceneObjectLoader._load_vector3(data_stream),
-            "rotation": HoneycomeSceneObjectLoader._load_vector3(data_stream),
-            "scale": HoneycomeSceneObjectLoader._load_vector3(data_stream),
-            "treeState": struct.unpack("i", data_stream.read(4))[0],
-            "visible": bool(struct.unpack("b", data_stream.read(1))[0]),
-        }
-
-    @staticmethod
-    def _save_object_info_base(data_stream: BinaryIO, data: Dict[str, Any]) -> None:
-        data_stream.write(struct.pack("i", data.get("dicKey", 0)))
-
-        pos = data.get("position", {"x": 0.0, "y": 0.0, "z": 0.0})
-        HoneycomeSceneObjectLoader._save_vector3(data_stream, pos, default=0.0)
-
-        rot = data.get("rotation", {"x": 0.0, "y": 0.0, "z": 0.0})
-        HoneycomeSceneObjectLoader._save_vector3(data_stream, rot, default=0.0)
-
-        scale = data.get("scale", {"x": 1.0, "y": 1.0, "z": 1.0})
-        HoneycomeSceneObjectLoader._save_vector3(data_stream, scale, default=1.0)
-
-        data_stream.write(struct.pack("i", data.get("treeState", 0)))
-        data_stream.write(struct.pack("b", int(data.get("visible", True))))
-
-    @staticmethod
-    def load_bone_info(data_stream: BinaryIO) -> Dict[str, Any]:
-        bone_data = {}
-        bone_data["dicKey"] = struct.unpack("i", data_stream.read(4))[0]
-        bone_data["changeAmount"] = {
-            "position": HoneycomeSceneObjectLoader._load_vector3(data_stream),
-            "rotation": HoneycomeSceneObjectLoader._load_vector3(data_stream),
-            "scale": HoneycomeSceneObjectLoader._load_vector3(data_stream),
-        }
-        return bone_data
-
-    @staticmethod
-    def save_bone_info(data_stream: BinaryIO, bone_data: Dict[str, Any]) -> None:
-        data_stream.write(struct.pack("i", bone_data.get("dicKey", 0)))
-        change_amount = bone_data.get("changeAmount", {})
-        HoneycomeSceneObjectLoader._save_vector3(
-            data_stream, change_amount.get("position", {"x": 0.0, "y": 0.0, "z": 0.0})
-        )
-        HoneycomeSceneObjectLoader._save_vector3(
-            data_stream, change_amount.get("rotation", {"x": 0.0, "y": 0.0, "z": 0.0})
-        )
-        HoneycomeSceneObjectLoader._save_vector3(
-            data_stream, change_amount.get("scale", {"x": 1.0, "y": 1.0, "z": 1.0})
-        )
-
-    @staticmethod
-    def load_pattern_info(data_stream: BinaryIO) -> Dict[str, Any]:
-        pattern_data = {}
-        pattern_data["unknown_float"] = struct.unpack("f", data_stream.read(4))[0]
-        pattern_data["key"] = struct.unpack("i", data_stream.read(4))[0]
-        pattern_data["clamp"] = bool(struct.unpack("b", data_stream.read(1))[0])
-        pattern_data["unknown_bool"] = bool(struct.unpack("b", data_stream.read(1))[0])
-        uv_json = load_string(data_stream).decode("utf-8")
-        pattern_data["uv"] = json.loads(uv_json)
-        return pattern_data
-
-    @staticmethod
-    def save_pattern_info(data_stream: BinaryIO, pattern_data: Dict[str, Any]) -> None:
-        data_stream.write(struct.pack("f", pattern_data.get("unknown_float", 1.0)))
-        data_stream.write(struct.pack("i", pattern_data["key"]))
-        data_stream.write(struct.pack("b", int(pattern_data["clamp"])))
-        data_stream.write(
-            struct.pack("b", int(pattern_data.get("unknown_bool", False)))
-        )
-        write_string(
-            data_stream,
-            json.dumps(pattern_data["uv"], separators=(",", ":")).encode("utf-8"),
-        )
-
-    @staticmethod
-    def load_item_info(
-        data_stream: BinaryIO, obj_info: Dict[str, Any], version: str = None
-    ) -> None:
-        data = HoneycomeSceneObjectLoader._load_object_info_base(data_stream)
-        data["unknown_1"] = struct.unpack("i", data_stream.read(4))[0]
-        data["unknown_2"] = struct.unpack("i", data_stream.read(4))[0]
-        data["group"] = struct.unpack("i", data_stream.read(4))[0]
-
-        if HoneycomeSceneObjectLoader._compare_versions(version, "1.1.1.0") >= 0:
-            data["category"] = struct.unpack("i", data_stream.read(4))[0]
-        else:
-            data["category"] = 0
-
-        data["no"] = struct.unpack("i", data_stream.read(4))[0]
-        data["unknown_3"] = data_stream.read(8)
-
-        data["colors"] = []
-        if HoneycomeSceneObjectLoader._compare_versions(version, "0.0.3") >= 0:
-            num_colors = 8
-        else:
-            num_colors = 7
-        for _ in range(num_colors):
-            color_bytes = load_string(data_stream)
-            if len(color_bytes) > 0:
-                data["colors"].append(json.loads(color_bytes.decode("utf-8")))
-            else:
-                data["colors"].append(None)
-        if num_colors == 7:
-            data["colors"].append({"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0})
-
-        data["unknown_4"] = struct.unpack("i", data_stream.read(4))[0]
-        data["unknown_5"] = bool(struct.unpack("b", data_stream.read(1))[0])
-
-        data["patterns"] = []
-        for _ in range(3):
-            data["patterns"].append(
-                HoneycomeSceneObjectLoader.load_pattern_info(data_stream)
-            )
-
-        data["unknown_6"] = data_stream.read(4)
-        data["alpha"] = struct.unpack("f", data_stream.read(4))[0]
-
-        if HoneycomeSceneObjectLoader._compare_versions(version, "0.0.4") >= 0:
-            line_color_json = load_string(data_stream).decode("utf-8")
-            data["line_color"] = json.loads(line_color_json)
-            data["line_width"] = struct.unpack("f", data_stream.read(4))[0]
-        else:
-            data["line_color"] = {
-                "r": 128.0 / 255.0,
-                "g": 128.0 / 255.0,
-                "b": 128.0 / 255.0,
-                "a": 1.0,
-            }
-            data["line_width"] = 1.0
-
-        if HoneycomeSceneObjectLoader._compare_versions(version, "0.0.7") >= 0:
-            emission_color_json = load_string(data_stream).decode("utf-8")
-            data["emission_color"] = json.loads(emission_color_json)
-            data["emission_power"] = struct.unpack("f", data_stream.read(4))[0]
-            data["light_cancel"] = struct.unpack("f", data_stream.read(4))[0]
-        else:
-            data["emission_color"] = {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0}
-            data["emission_power"] = 0.0
-            data["light_cancel"] = 0.0
-
-        data["unknown_7"] = data_stream.read(6)
-        data["unknown_8"] = load_string(data_stream).decode("utf-8")
-        data["unknown_9"] = data_stream.read(4)
-
-        data["enable_fk"] = bool(struct.unpack("b", data_stream.read(1))[0])
-
-        bones_count = struct.unpack("i", data_stream.read(4))[0]
-        data["bones"] = {}
-        for _ in range(bones_count):
-            bone_key = load_string(data_stream).decode("utf-8")
-            data["bones"][bone_key] = HoneycomeSceneObjectLoader.load_bone_info(
-                data_stream
-            )
-
-        if HoneycomeSceneObjectLoader._compare_versions(version, "1.0.1") >= 0:
-            data["enable_dynamic_bone"] = bool(
-                struct.unpack("b", data_stream.read(1))[0]
-            )
-        else:
-            data["enable_dynamic_bone"] = True
-
-        data["unknown_10"] = bool(struct.unpack("b", data_stream.read(1))[0])
-        data["anime_normalized_time"] = struct.unpack("f", data_stream.read(4))[0]
-        data["child"] = HoneycomeSceneObjectLoader.load_child_objects(
-            data_stream, version
-        )
-        obj_info["data"] = data
-
-    @staticmethod
-    def load_folder_info(
-        data_stream: BinaryIO, obj_info: Dict[str, Any], version: str = None
-    ) -> None:
-        data = HoneycomeSceneObjectLoader._load_object_info_base(data_stream)
-        name_bytes = load_string(data_stream)
-        data["name"] = name_bytes.decode("utf-8")
-        data["child"] = HoneycomeSceneObjectLoader.load_child_objects(
-            data_stream, version
-        )
-        obj_info["data"] = data
-
-    @staticmethod
-    def save_item_info(
-        data_stream: BinaryIO, obj_info: Dict[str, Any], version: str = None
-    ) -> None:
-        data = obj_info["data"]
-        HoneycomeSceneObjectLoader._save_object_info_base(data_stream, data)
-
-        data_stream.write(struct.pack("i", data["unknown_1"]))
-        data_stream.write(struct.pack("i", data["unknown_2"]))
-        data_stream.write(struct.pack("i", data["group"]))
-
-        if HoneycomeSceneObjectLoader._compare_versions(version, "1.1.1.0") >= 0:
-            data_stream.write(struct.pack("i", data["category"]))
-
-        data_stream.write(struct.pack("i", data["no"]))
-        data_stream.write(data["unknown_3"])
-
-        num_colors = (
-            8
-            if HoneycomeSceneObjectLoader._compare_versions(version, "0.0.3") >= 0
-            else 7
-        )
-        for i in range(num_colors):
-            color = (
-                data["colors"][i]
-                if i < len(data["colors"]) and data["colors"][i] is not None
-                else {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0}
-            )
-            write_string(
-                data_stream, json.dumps(color, separators=(",", ":")).encode("utf-8")
-            )
-
-        data_stream.write(struct.pack("i", data["unknown_4"]))
-        data_stream.write(struct.pack("b", int(data["unknown_5"])))
-
-        for pattern in data["patterns"]:
-            HoneycomeSceneObjectLoader.save_pattern_info(data_stream, pattern)
-
-        data_stream.write(data["unknown_6"])
-        data_stream.write(struct.pack("f", data["alpha"]))
-
-        if HoneycomeSceneObjectLoader._compare_versions(version, "0.0.4") >= 0:
-            write_string(
-                data_stream,
-                json.dumps(data["line_color"], separators=(",", ":")).encode("utf-8"),
-            )
-            data_stream.write(struct.pack("f", data["line_width"]))
-
-        if HoneycomeSceneObjectLoader._compare_versions(version, "0.0.7") >= 0:
-            write_string(
-                data_stream,
-                json.dumps(data["emission_color"], separators=(",", ":")).encode(
-                    "utf-8"
-                ),
-            )
-            data_stream.write(struct.pack("f", data["emission_power"]))
-            data_stream.write(struct.pack("f", data["light_cancel"]))
-
-        data_stream.write(data["unknown_7"])
-        write_string(data_stream, data["unknown_8"].encode("utf-8"))
-        data_stream.write(data["unknown_9"])
-
-        data_stream.write(struct.pack("b", int(data["enable_fk"])))
-        data_stream.write(struct.pack("i", len(data["bones"])))
-        for bone_key, bone_data in data["bones"].items():
-            write_string(data_stream, bone_key.encode("utf-8"))
-            HoneycomeSceneObjectLoader.save_bone_info(data_stream, bone_data)
-
-        if HoneycomeSceneObjectLoader._compare_versions(version, "1.0.1") >= 0:
-            data_stream.write(struct.pack("b", int(data["enable_dynamic_bone"])))
-
-        data_stream.write(struct.pack("b", int(data["unknown_10"])))
-        data_stream.write(struct.pack("f", data["anime_normalized_time"]))
-
-        data_stream.write(struct.pack("i", len(data.get("child", []))))
-        for child in data.get("child", []):
-            HoneycomeSceneObjectLoader.save_child_objects(data_stream, child, version)
-
-    @staticmethod
-    def save_folder_info(
-        data_stream: BinaryIO, obj_info: Dict[str, Any], version: str = None
-    ) -> None:
-        data = obj_info["data"]
-        HoneycomeSceneObjectLoader._save_object_info_base(data_stream, data)
-        name = data.get("name", "")
-        name_bytes = name.encode("utf-8") if isinstance(name, str) else name
-        write_string(data_stream, name_bytes)
-
-        child_list = data.get("child", [])
-        data_stream.write(struct.pack("i", len(child_list)))
-        for child in child_list:
-            HoneycomeSceneObjectLoader.save_child_objects(data_stream, child, version)
-
-    @staticmethod
-    def load_child_objects(data_stream: BinaryIO, version: str = None) -> list:
-        child_list = []
-        count = struct.unpack("i", data_stream.read(4))[0]
-        for _ in range(count):
-            obj_type = struct.unpack("i", data_stream.read(4))[0]
-            obj_info = {"type": obj_type, "data": {}}
-            HoneycomeSceneObjectLoader._dispatch_load(
-                data_stream, obj_type, obj_info, version
-            )
-            child_list.append(obj_info)
-        return child_list
-
-    @staticmethod
-    def save_child_objects(
-        data_stream: BinaryIO, child_data: Dict[str, Any], version: str = None
-    ) -> None:
-        obj_type = child_data.get("type", -1)
-        data_stream.write(struct.pack("i", obj_type))
-        HoneycomeSceneObjectLoader._dispatch_save(data_stream, child_data, version)
-
-    @staticmethod
-    def _compare_versions(version_str: str, target: str) -> int:
-        if version_str is None:
-            return 1
-        version_parts = [int(x) for x in version_str.split(".")]
-        target_parts = [int(x) for x in target.split(".")]
-        while len(version_parts) < len(target_parts):
-            version_parts.append(0)
-        while len(target_parts) < len(version_parts):
-            target_parts.append(0)
-        for v, t in zip(version_parts, target_parts):
-            if v < t:
-                return -1
-            if v > t:
-                return 1
-        return 0
-
-
-class HoneycomeSceneDataSimple:
-    """Minimal Honeycome scene loader/saver for items and folders."""
-
-    def __init__(self):
-        self.image = None
-        self.version = None
-        self.dataVersion = None
-        self.user_id = None
-        self.data_id = None
-        self.title = None
-        self.unknown_1 = None
-        self.unknown_2 = None
-        self.unknown_3 = None
-        self.dicObject = {}
-        self.unknown_tail = b""
-
-    @classmethod
-    def load(
-        cls, filelike: Union[str, bytes, io.BytesIO]
-    ) -> "HoneycomeSceneDataSimple":
-        hs = cls()
-        if isinstance(filelike, str):
-            with open(filelike, "br") as f:
-                data = f.read()
-            data_stream = io.BytesIO(data)
-        elif isinstance(filelike, bytes):
-            data_stream = io.BytesIO(filelike)
-        elif isinstance(filelike, io.BytesIO):
-            data_stream = filelike
-        else:
-            raise ValueError(f"Unsupported input type: {type(filelike)}")
-
-        hs.image = get_png(data_stream)
-        version_str = load_string(data_stream).decode("utf-8")
-        hs.user_id = load_string(data_stream).decode("utf-8")
-        hs.data_id = load_string(data_stream).decode("utf-8")
-        hs.title = load_string(data_stream).decode("utf-8")
-        hs.unknown_1 = load_type(data_stream, "i")
-        hs.unknown_2 = load_type(data_stream, "i")
-        hs.unknown_3 = data_stream.read(32)
-        hs.version = version_str
-        hs.dataVersion = version_str
-
-        obj_count = load_type(data_stream, "i")
-        for _ in range(obj_count):
-            key = load_type(data_stream, "i")
-            obj_type = load_type(data_stream, "i")
-            obj_info = {"type": obj_type, "data": {}}
-            HoneycomeSceneObjectLoader._dispatch_load(
-                data_stream, obj_type, obj_info, version_str
-            )
-            hs.dicObject[key] = obj_info
-
-        hs.unknown_tail = data_stream.read()
-        return hs
-
-    def __bytes__(self) -> bytes:
-        data_stream = io.BytesIO()
-        if self.image:
-            data_stream.write(self.image)
-
-        version_bytes = self.version.encode("utf-8")
-        data_stream.write(struct.pack("b", len(version_bytes)))
-        data_stream.write(version_bytes)
-
-        write_string(data_stream, self.user_id.encode("utf-8"))
-        write_string(data_stream, self.data_id.encode("utf-8"))
-        write_string(data_stream, self.title.encode("utf-8"))
-
-        data_stream.write(struct.pack("i", self.unknown_1))
-        data_stream.write(struct.pack("i", self.unknown_2))
-        data_stream.write(self.unknown_3)
-
-        data_stream.write(struct.pack("i", len(self.dicObject)))
-        for key, obj_info in self.dicObject.items():
-            data_stream.write(struct.pack("i", key))
-            data_stream.write(struct.pack("i", obj_info["type"]))
-            HoneycomeSceneObjectLoader._dispatch_save(
-                data_stream, obj_info, self.version
-            )
-
-        data_stream.write(self.unknown_tail)
-        return data_stream.getvalue()
 
 
 # ============================
@@ -1077,7 +630,7 @@ def load_template():
     """テンプレートシーンを読み込む"""
     template_scene = build_template_scene()
     folder_key = TEMPLATE_FOLDER_KEY
-    folder_obj = template_scene.dicObject[folder_key]
+    folder_obj = template_scene.objects[folder_key]
     plane_template = folder_obj["data"]["child"][0]
 
     return template_scene, plane_template, folder_key, folder_obj
@@ -1444,7 +997,7 @@ def generate_text_scene(
     )
 
     # 3. シーンを作成
-    scene = HoneycomeSceneDataSimple()
+    scene = HoneycomeSceneData()
     scene.version = template_scene.version
     scene.dataVersion = template_scene.dataVersion
     scene.user_id = template_scene.user_id
@@ -1452,8 +1005,20 @@ def generate_text_scene(
     scene.title = f"{get_text('scene_title_prefix', lang)}{text}"
     scene.unknown_1 = template_scene.unknown_1
     scene.unknown_2 = template_scene.unknown_2
-    scene.unknown_3 = template_scene.unknown_3
-    scene.unknown_tail = template_scene.unknown_tail
+    scene.unknown_tail_1 = template_scene.unknown_tail_1
+    scene.unknown_tail_2 = template_scene.unknown_tail_2
+    scene.unknown_tail_3 = template_scene.unknown_tail_3
+    scene.unknown_tail_4 = template_scene.unknown_tail_4
+    scene.unknown_tail_5 = template_scene.unknown_tail_5
+    scene.unknown_tail_6 = template_scene.unknown_tail_6
+    scene.unknown_tail_7 = template_scene.unknown_tail_7
+    scene.unknown_tail_8 = template_scene.unknown_tail_8
+    scene.unknown_tail_9 = template_scene.unknown_tail_9
+    scene.unknown_tail_10 = template_scene.unknown_tail_10
+    scene.frame_filename = template_scene.frame_filename
+    scene.unknown_tail_11 = template_scene.unknown_tail_11
+    scene.footer_marker = template_scene.footer_marker
+    scene.unknown_tail_extra = template_scene.unknown_tail_extra
     scene.image = template_scene.image
 
     new_folder = copy.deepcopy(folder_obj)
@@ -1467,7 +1032,7 @@ def generate_text_scene(
     else:
         new_folder["data"]["child"] = char_folders
 
-    scene.dicObject = {folder_key: new_folder}
+    scene.objects = {folder_key: new_folder}
 
     return (
         scene,
@@ -1643,7 +1208,6 @@ try:
                             **plane_template,
                             "data": {
                                 **plane_template["data"],
-                                "group": plane_settings["group"],
                                 "category": plane_settings["category"],
                                 "no": plane_settings["no"],
                                 "light_cancel": 1.0 - light_cancel,
