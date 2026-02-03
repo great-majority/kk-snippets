@@ -181,17 +181,17 @@ def load_items_data():
     return items_dict, category_dict
 
 
-def get_item_category_name(unknown_1, group, category):
-    """(unknown_1, group, category) から分類名を取得"""
+def get_item_category_name(title, group, category):
+    """(title, group, category) から分類名を取得"""
     _, category_dict = load_items_data()
-    key = (unknown_1, group, category)
-    return category_dict.get(key, f"不明 ({unknown_1}, {group}, {category})")
+    key = (title, group, category)
+    return category_dict.get(key, f"不明 ({title}, {group}, {category})")
 
 
-def get_item_info(unknown_1, group, category, no):
-    """(unknown_1, group, category, no) からアイテム情報を取得"""
+def get_item_info(title, group, category, no):
+    """(title, group, category, no) からアイテム情報を取得"""
     items_dict, _ = load_items_data()
-    key = (unknown_1, group, category, no)
+    key = (title, group, category, no)
     return items_dict.get(key)
 
 
@@ -424,7 +424,7 @@ def analyze_scene(hs):
         "max_depth": 0,
         "characters": [],
         "character_headers": Counter(),
-        "item_keys": Counter(),  # (group, category, no, unknown_1) のセットでカウント
+        "item_keys": Counter(),  # (group, category, no, title) のセットでカウント
         "folder_names": [],
         "routes": [],
         "cameras": [],
@@ -474,8 +474,8 @@ def analyze_scene(hs):
             group = data.get("group", -1)
             category = data.get("category", -1)
             no = data.get("no", -1)
-            unknown_1 = data.get("unknown_1", -1)
-            stats["item_keys"][(group, category, no, unknown_1)] += 1
+            title = data.get("title", -1)
+            stats["item_keys"][(group, category, no, title)] += 1
 
         # 3: Folder (OIFolderInfo)
         elif obj_type == 3:
@@ -652,17 +652,15 @@ if uploaded_file is not None:
 
             with st.expander(get_text("item_list", lang)):
                 item_df = []
-                for (group, category, no, unknown_1), count in sorted(
+                for (group, category, no, title), count in sorted(
                     stats["item_keys"].items()
                 ):
-                    item_info = get_item_info(unknown_1, group, category, no)
+                    item_info = get_item_info(title, group, category, no)
                     if item_info:
                         category_name = item_info["category_name"]
                         item_name = item_info["item_name"]
                     else:
-                        category_name = get_item_category_name(
-                            unknown_1, group, category
-                        )
+                        category_name = get_item_category_name(title, group, category)
                         item_name = f"不明 ({no})"
                     item_df.append(
                         {
