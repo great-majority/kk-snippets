@@ -50,3 +50,8 @@ https://kk-snippets.streamlit.app/digital-craft-item-converter
 https://kk-snippets.streamlit.app/digital-craft-data-viewer
 
 デジタルクラフトのシーンデータに含まれている情報を集計・表示するツールです。全オブジェクト数、タイプ別オブジェクト数（キャラクター、アイテム、フォルダ、ルート、カメラ）、キャラクター情報とヘッダーのユニーク値、(group, category, no)ペアでのアイテム統計、フォルダ構造などを確認できます。また、シーンに含まれるキャラクターを個別にダウンロードして抽出することもできます。
+
+### デジクラキャラクター統一コンバータ
+https://kk-snippets.streamlit.app/digital-craft-character-converter
+
+デジタルクラフトのシーン内に含まれるキャラクターを、ハニカム / サマすく / アイコミのいずれかに一括統一するツールです。スタジオ上でキャラクターを1体ずつ差し替える手間を減らせます。

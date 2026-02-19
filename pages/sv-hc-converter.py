@@ -48,6 +48,10 @@ TRANSLATIONS = {
         "file_is_hc": "このファイルは **ハニカム** のキャラデータです。",
         "file_is_sv": "このファイルは **サマすく** のキャラデータです。",
         "file_is_ac": "このファイルは **アイコミ** のキャラデータです。",
+        "target_select": "変換先を選択",
+        "target_hc": "ハニカム",
+        "target_sv": "サマすく",
+        "target_ac": "アイコミ",
         "download_sv": "サマすくのキャラとしてダウンロード",
         "download_hc": "ハニカムのキャラとしてダウンロード",
         "download_ac": "アイコミのキャラとしてダウンロード",
@@ -78,17 +82,21 @@ This tool allows you to convert character data between Honey Come, Summer Vacati
 | Portrait image                 | ⭕️        | ❌️            | ⭕️   |
 | Standing image                 | ❌️        | ⭕️            | ❌️   |
 | Honey Come specific data       | ⭕️        | ❌️            | ❌️   |
-| Summer Vacation specific data  | ❌️        | ⭕️            | ❌️   |
+| Summer Vacation Scramble specific data  | ❌️        | ⭕️            | ❌️   |
 | Aicomi specific data           | ❌️        | ❌️            | ⭕️   |
 """,
-        "file_uploader": "Select a character image (Summer Vacation / Honey Come / Aicomi)",
+        "file_uploader": "Select a character image (Summer Vacation Scramble / Honey Come / Aicomi)",
         "error_load": "Failed to load file. Unsupported file format.",
         "success_load": "Data loaded successfully.",
         "error_unsupported": "This header file is not supported:",
         "file_is_hc": "This file is a **Honey Come** character.",
         "file_is_sv": "This file is a **Summer Vacation Scramble** character.",
         "file_is_ac": "This file is an **Aicomi** character.",
-        "download_sv": "Download as Summer Vacation character",
+        "target_select": "Select conversion target",
+        "target_hc": "Honey Come",
+        "target_sv": "Summer Vacation Scramble",
+        "target_ac": "Aicomi",
+        "download_sv": "Download as Summer Vacation Scramble character",
         "download_hc": "Download as Honey Come character",
         "download_ac": "Download as Aicomi character",
         "language_selector": "Language / 言語",
@@ -680,41 +688,55 @@ if file is not None:
         st.error(f"{get_text('error_unsupported', lang)} {header}", icon="🚨")
         st.stop()
 
+    source = file.getvalue()
+
     if header == "【HCChara】":
         st.write(get_text("file_is_hc", lang))
-        hc = HoneycomeCharaData.load(file.getvalue())
+        hc = HoneycomeCharaData.load(source)
         name = " ".join([hc["Parameter"]["lastname"], hc["Parameter"]["firstname"]])
-        svc = hc_to_sv(hc)
+        target = st.radio(
+            get_text("target_select", lang),
+            options=["SV", "AC"],
+            format_func=lambda x: get_text(f"target_{x.lower()}", lang),
+            horizontal=True,
+        )
+        converted = hc_to_sv(hc) if target == "SV" else sv_to_ac(hc_to_sv(hc))
         st.download_button(
-            get_text("download_sv", lang),
-            bytes(svc),
-            file_name=f"sv_converted_{name}.png",
+            get_text(f"download_{target.lower()}", lang),
+            bytes(converted),
+            file_name=f"{target.lower()}_converted_{name}.png",
         )
 
     elif header == "【SVChara】":
         st.write(get_text("file_is_sv", lang))
-        svc = SummerVacationCharaData.load(file.getvalue())
+        svc = SummerVacationCharaData.load(source)
         name = " ".join([svc["Parameter"]["lastname"], svc["Parameter"]["firstname"]])
-        hc = sv_to_hc(svc)
-        ac = sv_to_ac(svc)
-        st.download_button(
-            get_text("download_hc", lang),
-            bytes(hc),
-            file_name=f"hc_converted_{name}.png",
+        target = st.radio(
+            get_text("target_select", lang),
+            options=["HC", "AC"],
+            format_func=lambda x: get_text(f"target_{x.lower()}", lang),
+            horizontal=True,
         )
+        converted = sv_to_hc(svc) if target == "HC" else sv_to_ac(svc)
         st.download_button(
-            get_text("download_ac", lang),
-            bytes(ac),
-            file_name=f"ac_converted_{name}.png",
+            get_text(f"download_{target.lower()}", lang),
+            bytes(converted),
+            file_name=f"{target.lower()}_converted_{name}.png",
         )
 
     elif header == "【ACChara】":
         st.write(get_text("file_is_ac", lang))
-        ac = AicomiCharaData.load(file.getvalue())
+        ac = AicomiCharaData.load(source)
         name = " ".join([ac["Parameter"]["lastname"], ac["Parameter"]["firstname"]])
-        svc = ac_to_sv(ac)
+        target = st.radio(
+            get_text("target_select", lang),
+            options=["SV", "HC"],
+            format_func=lambda x: get_text(f"target_{x.lower()}", lang),
+            horizontal=True,
+        )
+        converted = ac_to_sv(ac) if target == "SV" else sv_to_hc(ac_to_sv(ac))
         st.download_button(
-            get_text("download_sv", lang),
-            bytes(svc),
-            file_name=f"sv_converted_{name}.png",
+            get_text(f"download_{target.lower()}", lang),
+            bytes(converted),
+            file_name=f"{target.lower()}_converted_{name}.png",
         )
