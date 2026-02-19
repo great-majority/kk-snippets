@@ -52,3 +52,8 @@ A tool for converting plane items between Map Object and Character Object in Dig
 https://kk-snippets.streamlit.app/digital-craft-data-viewer
 
 A tool for analyzing and displaying information contained in Digital Craft scene data. It shows total object counts, object counts by type (Character, Item, Folder, Route, Camera), character information with unique headers, item statistics by (group, category, no) pairs, folder structure, and more. You can also download and extract individual characters from the scene.
+
+### Digital Craft Character Unifier
+https://kk-snippets.streamlit.app/digital-craft-character-converter
+
+A tool that unifies all characters in a Digital Craft scene to one target format (Honeycome / Summer Vacation Scramble / Aicomi) in a single batch. It is useful when you want to avoid manually replacing characters one by one in Studio.
