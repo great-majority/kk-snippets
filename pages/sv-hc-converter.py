@@ -14,12 +14,7 @@ TRANSLATIONS = {
     "ja": {
         "title": "ILLGAMESキャラクターコンバータ",
         "description": """
-ハニカム↔サマすく↔アイコミでキャラクターデータを相互変換するツールです。キャラデータ読み込み後、
-- ハニカムのキャラデータはサマすくへ
-- サマすくのキャラデータはハニカムとアイコミへ
-- アイコミのキャラデータはサマすくへ
-
-変換を行わうことができます。
+ハニカム↔サマすく↔アイコミでキャラクターデータを相互変換するツールです。キャラデータ読み込み後、選択したタイトルへキャラ変換を行わうことができます。
 
 **⚠️注意事項**: バグなどあるかもしれませんので、変換前のデータのバックアップはとっておきましょう!
 """,
@@ -60,10 +55,7 @@ TRANSLATIONS = {
     "en": {
         "title": "ILLGAMES Character Converter",
         "description": """
-This tool allows you to convert character data between Honey Come, Summer Vacation Scramble, and Aicomi. After loading character data:
-- Honey Come character data can be converted to Summer Vacation Scramble
-- Summer Vacation Scramble character data can be converted to Honey Come and Aicomi
-- Aicomi character data can be converted to Summer Vacation Scramble
+This tool allows you to convert character data between Honey Come, Summer Vacation Scramble, and Aicomi. After loading character data, you can convert the character to the selected title.
 
 **⚠️Caution**: There may be bugs, so please back up your data before conversion!
 """,
