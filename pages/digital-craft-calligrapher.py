@@ -1,12 +1,18 @@
 import copy
 import io
+import math
 import uuid
 from pathlib import Path
 
 import numpy as np
 import streamlit as st
+import wildmeshing as wildmeshing_lib
+from fontTools.pens.recordingPen import DecomposingRecordingPen
+from fontTools.ttLib import TTFont
+from fontPens.flattenPen import FlattenPen
 from kkloader import HoneycomeSceneData
 from PIL import Image, ImageDraw, ImageFont
+from scipy.optimize import least_squares
 
 # ========================================
 # i18n対応: 多言語辞書
@@ -41,6 +47,11 @@ TRANSLATIONS = {
         "meta_plane_size": "平面サイズ",
         "meta_plane_type": "平面タイプ",
         "meta_light_influence": "ライト影響度",
+        "meta_render_mode": "生成方式",
+        "meta_mesh_flatten_length": "メッシュ線分長",
+        "meta_mesh_stop_quality": "メッシュ stop_quality",
+        "meta_mesh_edge_length_r": "メッシュ edge_length_r",
+        "meta_mesh_target_edge_len": "メッシュ target_edge_len",
         "param_settings": "パラメータ設定",
         "text_input": "テキスト",
         "text_placeholder": "ここにテキストを入力",
@@ -66,6 +77,33 @@ TRANSLATIONS = {
         "plane_type_help": "マップの方の平面を使うか、キャラの方の平面を使うかを設定します。マップライトとキャラライトのどちらのライトに影響されるかが決まります。",
         "plane_map": "平面(マップ)",
         "plane_chara": "平面(キャラ)",
+        "render_mode_label": "生成方式",
+        "render_mode_help": "ドット平面で作るか、三角形メッシュで作るかを選びます。",
+        "render_mode_dot": "ドット(平面)",
+        "render_mode_mesh": "メッシュ(三角形)",
+        "mesh_flatten_length_label": "メッシュ線分長",
+        "mesh_flatten_length_help": "値を小さくすると曲線を細かく分割し、三角形の数が増えて重くなります。",
+        "mesh_stop_quality_label": "メッシュ品質しきい値(stop_quality)",
+        "mesh_stop_quality_help": "大きいほど早く止まりやすく軽くなり、小さいほど重くなりやすいです。",
+        "mesh_edge_length_r_label": "メッシュ辺長比(edge_length_r)",
+        "mesh_edge_length_r_help": "大きいほど粗く軽く、小さいほど細かく重くなります。",
+        "mesh_target_edge_len_enable": "絶対辺長(target_edge_len)を使う",
+        "mesh_target_edge_len_label": "絶対辺長(target_edge_len)",
+        "mesh_target_edge_len_help": "有効時のみ使用。小さいほど三角形が増えます。",
+        "mesh_solver_skip_warn": "三角形 {failed} 個はせん断解の収束に失敗したためスキップしました。",
+        "mesh_reconstruction_skip_warn": "三角形 {failed} 個は再構成誤差が閾値超過のためスキップしました。",
+        "mesh_reconstruction_info": "再構成誤差 (採用三角形): max={max_err:.3e}, rmse={rmse:.3e}, 閾値={tol:.3e}",
+        "mesh_triangulation_title": "三角形分割プレビュー",
+        "mesh_triangulation_empty": "分割結果がありません。",
+        "mesh_dependency_error": "メッシュ生成には wildmeshing / fonttools / fontpens / scipy が必要です。",
+        "mesh_missing_glyph_error": '文字"{error_moji}"はフォントに未収録のためレンダリングできませんでした',
+        "mesh_stage_prepare": "準備中",
+        "mesh_stage_glyph": "フォント輪郭を抽出中",
+        "mesh_stage_triangulate": "輪郭を三角形分割中",
+        "mesh_stage_solve": "三角形せん断を計算中",
+        "mesh_stage_preview": "分割プレビューを描画中",
+        "mesh_stage_scene": "シーンを組み立て中",
+        "mesh_stage_done": "完了",
         "light_cancel_label": "ライトの影響度",
         "light_cancel_help": 'アイテム設定の"ライトの影響度"を一括設定します。1ほどライトを反射しやすく、0ほどライトを吸収しやすくなります。',
         "generate_button": "シーンを生成",
@@ -78,6 +116,9 @@ TRANSLATIONS = {
         "scene_info_title": "シーン情報",
         "plane_count": "平面数",
         "plane_reduction": "平面削減",
+        "mesh_triangle_total": "総三角形数",
+        "mesh_triangle_accepted": "採用数",
+        "mesh_triangle_failed": "失敗数",
         "download_button": "シーンファイルをダウンロード",
         "error_init": "アプリケーションの初期化に失敗しました:",
         "error_occurred": "エラーが発生しました:",
@@ -114,6 +155,11 @@ The parameters are saved inside the **"Text Info"** folder in the generated scen
         "meta_plane_size": "Plane size",
         "meta_plane_type": "Plane type",
         "meta_light_influence": "Light influence",
+        "meta_render_mode": "Render mode",
+        "meta_mesh_flatten_length": "Mesh segment length",
+        "meta_mesh_stop_quality": "Mesh stop_quality",
+        "meta_mesh_edge_length_r": "Mesh edge_length_r",
+        "meta_mesh_target_edge_len": "Mesh target_edge_len",
         "param_settings": "Parameter Settings",
         "text_input": "Text",
         "text_placeholder": "Enter text here",
@@ -139,6 +185,33 @@ The parameters are saved inside the **"Text Info"** folder in the generated scen
         "plane_type_help": "Choose whether to use map planes or character planes. This determines which light type affects them.",
         "plane_map": "Plane (Map)",
         "plane_chara": "Plane (Character)",
+        "render_mode_label": "Render mode",
+        "render_mode_help": "Choose dot planes or triangulated mesh rendering.",
+        "render_mode_dot": "Dots (Planes)",
+        "render_mode_mesh": "Mesh (Triangles)",
+        "mesh_flatten_length_label": "Mesh segment length",
+        "mesh_flatten_length_help": "Smaller values split curves more finely but increase triangle count.",
+        "mesh_stop_quality_label": "Mesh quality threshold (stop_quality)",
+        "mesh_stop_quality_help": "Higher values stop earlier and are usually lighter; lower values tend to be heavier.",
+        "mesh_edge_length_r_label": "Mesh edge ratio (edge_length_r)",
+        "mesh_edge_length_r_help": "Higher values make coarser/lighter meshes; lower values make denser/heavier meshes.",
+        "mesh_target_edge_len_enable": "Use absolute edge length (target_edge_len)",
+        "mesh_target_edge_len_label": "Absolute edge length (target_edge_len)",
+        "mesh_target_edge_len_help": "Used only when enabled. Smaller values increase triangle count.",
+        "mesh_solver_skip_warn": "Skipped {failed} triangles because the shear solve did not converge.",
+        "mesh_reconstruction_skip_warn": "Skipped {failed} triangles because reconstruction error exceeded the threshold.",
+        "mesh_reconstruction_info": "Reconstruction error (accepted triangles): max={max_err:.3e}, rmse={rmse:.3e}, threshold={tol:.3e}",
+        "mesh_triangulation_title": "Triangulation Preview",
+        "mesh_triangulation_empty": "No triangulation result.",
+        "mesh_dependency_error": "Mesh mode requires wildmeshing / fonttools / fontpens / scipy.",
+        "mesh_missing_glyph_error": 'Character "{error_moji}" is not available in the selected font and could not be rendered.',
+        "mesh_stage_prepare": "Preparing",
+        "mesh_stage_glyph": "Extracting glyph outlines",
+        "mesh_stage_triangulate": "Triangulating contours",
+        "mesh_stage_solve": "Solving triangle shears",
+        "mesh_stage_preview": "Rendering triangulation preview",
+        "mesh_stage_scene": "Building scene",
+        "mesh_stage_done": "Done",
         "light_cancel_label": "Light influence",
         "light_cancel_help": 'Sets item "Light influence" setting. Higher values reflect light more, lower values absorb light more.',
         "generate_button": "Generate Scene",
@@ -151,6 +224,9 @@ The parameters are saved inside the **"Text Info"** folder in the generated scen
         "scene_info_title": "Scene Info",
         "plane_count": "Plane count",
         "plane_reduction": "Plane reduction",
+        "mesh_triangle_total": "Total triangles",
+        "mesh_triangle_accepted": "Accepted",
+        "mesh_triangle_failed": "Failed",
         "download_button": "Download scene file",
         "error_init": "Failed to initialize application:",
         "error_occurred": "An error occurred:",
@@ -167,13 +243,53 @@ def get_text(key, lang="ja"):
     return TRANSLATIONS.get(lang, TRANSLATIONS["ja"]).get(key, key)
 
 
-SPACING_RATIO = 0.2
-FONT_SIZE = 200
+DEG2RAD = math.pi / 180.0
 FONT_DIR = Path(__file__).parent / "digital-craft-calligrapher-data"
-CHAR_CANVAS_PADDING = 5
+
+
+class DotRenderConfig:
+    SPACING_RATIO = 0.2
+    FONT_SIZE = 200
+    CHAR_CANVAS_PADDING = 5
+    DEFAULT_RESOLUTION = 100
+
+
+class MeshRenderConfig:
+    SOURCE_TRIANGLE = np.array(
+        [[0.0, -0.1], [0.086, 0.05], [-0.086, 0.05]], dtype=np.float64
+    )
+    RECONSTRUCTION_MAX_ABS_TOL = 1e-4
+    SOLVER_REACHABLE_RESIDUAL_TOL = 1e-5
+    SOLVER_EARLY_BREAK_RESIDUAL_TOL = 1e-12
+    SOLVER_MAX_NFEV = 120
+    FLATTEN_SEGMENT_LENGTH_DEFAULT = 20.0
+    # wildmeshing の分割設定。triwild.ipynb の使用例に合わせる。
+    TRIWILD_STOP_QUALITY = 20.0
+    TRIWILD_MAX_ITS = 80
+    TRIWILD_STAGE = 1
+    TRIWILD_EPSILON = -1.0
+    TRIWILD_FEATURE_EPSILON = 1e-3
+    TRIWILD_TARGET_EDGE_LEN = -1.0
+    TRIWILD_EDGE_LENGTH_R = 0.12
+    TRIWILD_FLAT_FEATURE_ANGLE = 10.0
+    TRIWILD_CUT_OUTSIDE = True
+    TRIWILD_SKIP_EPS = True
+    TRIWILD_MUTE_LOG = True
+
+
+class MissingGlyphError(ValueError):
+    def __init__(self, error_moji):
+        self.error_moji = error_moji
+        super().__init__(error_moji)
+
+
 PLANE_PRESETS = {
     "平面(マップ)": {"category": 0, "no": 215},
     "平面(キャラ)": {"category": 1, "no": 290},
+}
+TRIANGLE_PRESETS = {
+    "平面(マップ)": {"category": 0, "no": 216},
+    "平面(キャラ)": {"category": 1, "no": 291},
 }
 
 
@@ -202,22 +318,6 @@ def format_font_option(font_path):
     return font_path.name
 
 
-def compute_canvas_height(text, font, padding):
-    ascent, descent = font.getmetrics()
-    return (ascent + descent) + padding * 2
-
-
-def compute_canvas_size(text, font, padding):
-    max_char_width = 0
-    dummy_img = Image.new("L", (1, 1))
-    dummy_draw = ImageDraw.Draw(dummy_img)
-    for char in text:
-        bbox = dummy_draw.textbbox((0, 0), char, font=font, anchor="ls")
-        max_char_width = max(max_char_width, bbox[2] - bbox[0])
-    max_char_width = max(1, max_char_width)
-    return max_char_width + padding * 2, compute_canvas_height(text, font, padding)
-
-
 def select_font_option(available_fonts, default_font_name):
     if not available_fonts:
         st.warning("フォントが見つかりません")
@@ -234,174 +334,14 @@ def select_font_option(available_fonts, default_font_name):
     )
 
 
-def compute_layout(text_input, per_char_resolution, text_height, plane_size_factor):
-    grid_width = max(1, per_char_resolution * max(1, len(text_input)))
-    grid_height = per_char_resolution
-    pixel_size = text_height / per_char_resolution
-    text_scale = (pixel_size / SPACING_RATIO) * plane_size_factor
-    spacing = pixel_size
-    return {
-        "grid_width": grid_width,
-        "grid_height": grid_height,
-        "pixel_size": pixel_size,
-        "text_scale": text_scale,
-        "spacing": spacing,
-    }
-
-
-def measure_text_advance(draw, font, value):
-    """PILのメトリクスから文字列のアドバンス幅を取得する。"""
-    if hasattr(draw, "textlength"):
-        return draw.textlength(value, font=font)
-    if hasattr(font, "getlength"):
-        return font.getlength(value)
-    bbox = draw.textbbox((0, 0), value, font=font, anchor="ls")
-    return bbox[2] - bbox[0]
-
-
-def compute_text_center_ratios(text, font, img_width):
-    """PILの描画位置に基づき、各文字の中心Xの比率(0-1)を返す。"""
-    dummy_img = Image.new("L", (1, 1))
-    dummy_draw = ImageDraw.Draw(dummy_img)
-    text_bbox = dummy_draw.textbbox((0, 0), text, font=font, anchor="ls")
-    text_left = text_bbox[0]
-    text_width = max(1, text_bbox[2] - text_bbox[0])
-    x_offset = (img_width - text_width) // 2 - text_left
-
-    centers = []
-    for index, char in enumerate(text):
-        advance = measure_text_advance(dummy_draw, font, text[:index])
-        char_bbox = dummy_draw.textbbox((advance, 0), char, font=font, anchor="ls")
-        if char_bbox is None or (char_bbox[2] - char_bbox[0]) == 0:
-            char_advance = measure_text_advance(dummy_draw, font, char)
-            center = advance + char_advance / 2
-        else:
-            center = (char_bbox[0] + char_bbox[2]) / 2
-        center_image = x_offset + center
-        centers.append(center_image / max(1, img_width))
-    return centers
-
-
 def compute_grid_width_from_image(img, grid_height):
     """元の画像の縦横比を維持したまま、グリッド幅を算出する。"""
     return max(1, int(round(img.width * grid_height / img.height)))
 
 
-def build_char_pixels(
-    text,
-    font,
-    font_size,
-    per_char_resolution,
-    canvas_width,
-    canvas_height,
-    effective_threshold,
-):
-    """各文字を描画し、1文字分の正方形ピクセルグリッドへ縮小する。"""
-    char_pixels_list = []
-    char_center_cols = []
-    raw_plane_count = 0
-
-    # 各文字を同一サイズのキャンバスへ描画して、等解像度のピクセルへ変換する。
-    for char in text:
-        char_img = text_to_image(
-            char,
-            font_size=font_size,
-            font=font,
-            canvas_width=canvas_width,
-            canvas_height=canvas_height,
-        )
-        char_pixels = resample_image(
-            char_img,
-            per_char_resolution,
-            per_char_resolution,
-        )
-        raw_plane_count += int(np.sum(char_pixels >= effective_threshold))
-
-        # 文字の見た目中心を求めるために、非ゼロ列の範囲を測る。
-        nonzero_cols = np.where(char_pixels >= effective_threshold)[1]
-        if nonzero_cols.size == 0:
-            center_col = (per_char_resolution - 1) / 2
-        else:
-            center_col = (nonzero_cols.min() + nonzero_cols.max()) / 2
-
-        char_pixels_list.append(char_pixels)
-        char_center_cols.append(center_col)
-
-    return char_pixels_list, char_center_cols, raw_plane_count
-
-
 def build_preview_from_image(img, grid_width, grid_height):
     """元のPIL画像をプレビューサイズに縮小する。"""
     return resample_image(img, grid_width, grid_height)
-
-
-def build_char_folders(
-    text,
-    char_pixels_list,
-    char_center_cols,
-    desired_centers,
-    plane_template,
-    folder_obj,
-    grid_width,
-    spacing,
-    threshold,
-    color,
-    edge_color,
-    antialias,
-    plane_scale,
-    global_start_x,
-    global_start_z,
-    per_char_resolution,
-    merge_horizontal,
-    merge_color_threshold,
-):
-    """文字ごとの平面とフォルダを生成し、中心比率に沿って配置する。"""
-    char_folders = []
-    plane_count = 0
-    plane_count_horizontal = 0
-
-    for index, char in enumerate(text):
-        # 左右反転を補正し、座標系の向きに合わせる。
-        char_pixels = np.fliplr(char_pixels_list[index])
-        center_col = char_center_cols[index]
-
-        # 文字画像の左端位置（X）を、文字ごとの解像度に基づいて配置する。
-        char_start_x = global_start_x + index * per_char_resolution * spacing
-        center_x = char_start_x + center_col * spacing
-        planes, planes_horizontal = pixels_to_planes(
-            char_pixels,
-            plane_template,
-            spacing=spacing,
-            threshold=threshold,
-            color=color,
-            edge_color=edge_color,
-            antialias=antialias,
-            scale=plane_scale,
-            start_x=char_start_x,
-            start_z=global_start_z,
-            merge_horizontal=merge_horizontal,
-            merge_color_threshold=merge_color_threshold,
-        )
-        # ローカル中心に合わせて平面をオフセットする。
-        for plane in planes:
-            plane["data"]["position"]["x"] -= center_x
-        plane_count += len(planes)
-        plane_count_horizontal += planes_horizontal
-
-        # PIL上の中心比率を、シーンのX座標へ変換する。
-        desired_center_x = global_start_x + (grid_width - 1) * spacing * (
-            1.0 - desired_centers[index]
-        )
-
-        char_folder = copy.deepcopy(folder_obj)
-        char_label = char if char.strip() else "空白"
-        char_folder["data"]["name"] = f"文字_{index + 1}_{char_label}"
-        char_folder["data"]["position"]["x"] = desired_center_x
-        char_folder["data"]["child"] = planes
-        char_folder["data"]["treeState"] = 1
-        char_folders.append(char_folder)
-
-    return char_folders, plane_count, plane_count_horizontal
 
 
 def render_preview(original_img, preview_pixels, grid_width, grid_height, lang="ja"):
@@ -419,10 +359,40 @@ def render_preview(original_img, preview_pixels, grid_width, grid_height, lang="
 
 
 def render_scene_info(
-    scene, plane_count, plane_count_horizontal, raw_plane_count, lang="ja"
+    scene,
+    plane_count,
+    plane_count_horizontal,
+    raw_plane_count,
+    lang="ja",
+    is_mesh_mode=False,
+    mesh_stats=None,
 ):
     st.subheader(f"📝 {get_text('scene_info_title', lang)}")
     info_col1, info_col2, info_col3 = st.columns(3)
+
+    if is_mesh_mode:
+        total_triangles = raw_plane_count
+        accepted_triangles = plane_count
+        if mesh_stats is not None:
+            failed_triangles = int(mesh_stats.get("solve_failed_count", 0)) + int(
+                mesh_stats.get("reconstruction_failed_count", 0)
+            )
+        elif raw_plane_count is not None:
+            failed_triangles = max(0, raw_plane_count - plane_count)
+        else:
+            failed_triangles = 0
+
+        with info_col1:
+            st.metric(
+                get_text("mesh_triangle_total", lang),
+                f"{total_triangles}" if total_triangles is not None else "-",
+            )
+        with info_col2:
+            st.metric(get_text("mesh_triangle_accepted", lang), f"{accepted_triangles}")
+        with info_col3:
+            st.metric(get_text("mesh_triangle_failed", lang), f"{failed_triangles}")
+        return
+
     with info_col1:
         st.metric(get_text("plane_count", lang), f"{plane_count}")
     with info_col2:
@@ -544,7 +514,7 @@ TEMPLATE_PLANE_DATA = {
     ],
     "alpha": 1.0,
     "line_color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0},
-    "line_width": 1.0,
+    "line_width": 0.0,
     "emission_color": {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
     "emission_power": 0.0,
     "light_cancel": 0.0,
@@ -594,34 +564,6 @@ def build_template_scene() -> "HoneycomeSceneData":
     ]
     scene.objects = {TEMPLATE_FOLDER_KEY: folder_obj}
     return scene
-
-
-# ============================
-# Streamlit App
-# ============================
-# ページ設定
-title = get_text("title", "ja")
-st.set_page_config(page_title=title, page_icon="✨", layout="wide")
-
-# サイドバーに言語選択を配置
-with st.sidebar:
-    lang = st.selectbox(
-        "Language / 言語",
-        options=["ja", "en"],
-        format_func=lambda x: "日本語" if x == "ja" else "English",
-        index=0,
-    )
-
-st.title(f"✨ {get_text('title', lang)}")
-st.markdown(get_text("subtitle", lang))
-
-
-# セッション状態の初期化
-if "template_scene" not in st.session_state:
-    st.session_state.template_scene = None
-    st.session_state.plane_template = None
-    st.session_state.folder_key = None
-    st.session_state.folder_obj = None
 
 
 # テンプレートの読み込み
@@ -714,7 +656,232 @@ def create_plane(template, x, y, z, color, scale=1.0):
     plane["data"]["scale"]["y"] = scale
     plane["data"]["scale"]["z"] = scale
     plane["data"]["colors"][0] = color
+    # テンプレート由来の値に依存しないよう、線幅は常に0に固定する。
+    plane["data"]["line_width"] = 0.0
     return plane
+
+
+class TriangleSolverOptimized:
+    """triangle.ipynb の TriangleSolverOptimized 実装。"""
+
+    def __init__(self, source_xz):
+        source = np.asarray(source_xz, dtype=np.float64)
+        if source.shape != (3, 2):
+            raise ValueError("TriangleSolverOptimized requires source_xz shape (3, 2)")
+        self.source_xz = source
+        self.src0 = source[0]
+
+        edge_1 = source[1] - source[0]
+        edge_2 = source[2] - source[0]
+        s00, s01 = float(edge_1[0]), float(edge_2[0])
+        s10, s11 = float(edge_1[1]), float(edge_2[1])
+        det = s00 * s11 - s01 * s10
+        if abs(det) < 1e-14:
+            raise ValueError("source triangle is degenerate")
+
+        inv_det = 1.0 / det
+        self.inv_source_edges = np.array(
+            [[s11 * inv_det, -s01 * inv_det], [-s10 * inv_det, s00 * inv_det]],
+            dtype=np.float64,
+        )
+
+    @staticmethod
+    def effective_scale(sx, sz, theta_deg):
+        rad = theta_deg * DEG2RAD
+        cos2 = math.cos(rad) ** 2
+        sin2 = math.sin(rad) ** 2
+        return sx * cos2 + sz * sin2, sx * sin2 + sz * cos2
+
+    @classmethod
+    def _build_A_entries(cls, alpha, sx, sz, theta, child_x, child_z):
+        alpha_rad = alpha * DEG2RAD
+        theta_rad = theta * DEG2RAD
+        cos_a, sin_a = math.cos(alpha_rad), math.sin(alpha_rad)
+        cos_t, sin_t = math.cos(theta_rad), math.sin(theta_rad)
+
+        a00 = child_x * (cos_a * sx * cos_t - sin_a * sz * sin_t)
+        a01 = child_z * (cos_a * sx * sin_t + sin_a * sz * cos_t)
+        a10 = child_x * (-sin_a * sx * cos_t - cos_a * sz * sin_t)
+        a11 = child_z * (-sin_a * sx * sin_t + cos_a * sz * cos_t)
+        return a00, a01, a10, a11
+
+    def forward(
+        self, source_xz=None, *, px, pz, alpha, sx, theta, cs=None, cx=None, cz=None
+    ):
+        source = (
+            self.source_xz
+            if source_xz is None
+            else np.asarray(source_xz, dtype=np.float64)
+        )
+        sz = 1.0 - sx
+        if cx is None or cz is None:
+            if cs is None:
+                raise ValueError("forward requires either cs or (cx, cz)")
+            cx = cs
+            cz = cs
+        eff_x, eff_z = self.effective_scale(sx, sz, theta)
+        if eff_x <= 1e-12 or eff_z <= 1e-12:
+            raise ValueError("effective scale became too small")
+        child_x = cx / eff_x
+        child_z = cz / eff_z
+        a00, a01, a10, a11 = self._build_A_entries(
+            alpha, sx, sz, theta, child_x, child_z
+        )
+
+        out = np.empty((source.shape[0], 2), dtype=np.float64)
+        src_x = source[:, 0]
+        src_z = source[:, 1]
+        out[:, 0] = a00 * src_x + a01 * src_z + px
+        out[:, 1] = a10 * src_x + a11 * src_z + pz
+        return out
+
+    def reconstruction_error(self, target_xz, solved):
+        reconstructed = self.forward(
+            px=solved["px"],
+            pz=solved["pz"],
+            alpha=solved["alpha"],
+            sx=solved["sx"],
+            theta=solved["theta"],
+            cx=solved.get("cx"),
+            cz=solved.get("cz"),
+            cs=solved.get("cs"),
+        )
+        target = np.asarray(target_xz, dtype=np.float64)
+        diff = reconstructed - target
+        return {
+            "max_abs": float(np.max(np.abs(diff))),
+            "rmse": float(np.sqrt(np.mean(diff * diff))),
+        }
+
+    def solve(self, target_xz):
+        target = np.asarray(target_xz, dtype=np.float64)
+        if target.shape != (3, 2):
+            raise ValueError("target_xz must be shape (3, 2)")
+
+        q0 = target[0]
+        dq1 = target[1] - q0
+        dq2 = target[2] - q0
+        target_edges = np.array([[dq1[0], dq2[0]], [dq1[1], dq2[1]]], dtype=np.float64)
+
+        a_target = target_edges @ self.inv_source_edges
+        translation = q0 - a_target @ self.src0
+
+        t00, t01 = float(a_target[0, 0]), float(a_target[0, 1])
+        t10, t11 = float(a_target[1, 0]), float(a_target[1, 1])
+
+        u_mat, sigma, v_mat = np.linalg.svd(a_target)
+        if np.linalg.det(u_mat) < 0:
+            u_mat[:, 1] *= -1
+            sigma[1] *= -1
+        if np.linalg.det(v_mat) < 0:
+            v_mat[1, :] *= -1
+            sigma[1] *= -1
+
+        alpha_0 = math.atan2(u_mat[0, 1], u_mat[0, 0]) / DEG2RAD
+        theta_0 = math.atan2(v_mat[0, 1], v_mat[0, 0]) / DEG2RAD
+        sigma_abs = np.abs(sigma)
+        child_scale_min = 1e-4
+        cx_0 = max(float(sigma_abs[0]), child_scale_min)
+        cz_0 = max(float(sigma_abs[1]), child_scale_min)
+        cs_0 = max(float(sigma_abs[0] + sigma_abs[1]), 0.02)
+        sx_0 = float(np.clip(sigma_abs[0] / cs_0, 0.02, 0.98))
+
+        max_sigma = max(float(np.max(sigma_abs)), 1.0)
+        max_child_scale = max(10.0, max_sigma * 4.0)
+
+        def equations(params):
+            alpha, sx, theta, cx, cz = params
+            sz = 1.0 - sx
+            eff_x, eff_z = self.effective_scale(sx, sz, theta)
+            if eff_x <= 1e-8 or eff_z <= 1e-8:
+                return np.array([1e3, 1e3, 1e3, 1e3], dtype=np.float64)
+            child_x = cx / eff_x
+            child_z = cz / eff_z
+            a00, a01, a10, a11 = self._build_A_entries(
+                alpha, sx, sz, theta, child_x, child_z
+            )
+            return np.array(
+                [a00 - t00, a01 - t01, a10 - t10, a11 - t11], dtype=np.float64
+            )
+
+        candidates = [
+            (alpha_0, sx_0, theta_0, cx_0, cz_0),
+            (alpha_0 + 180, sx_0, theta_0 + 180, cx_0, cz_0),
+            (alpha_0, 1 - sx_0, theta_0 + 90, cz_0, cx_0),
+            (alpha_0 + 180, 1 - sx_0, theta_0 + 270, cz_0, cx_0),
+            (alpha_0 + 90, 1 - sx_0, theta_0, cz_0, cx_0),
+            (alpha_0 + 90, sx_0, theta_0 + 90, cx_0, cz_0),
+            (alpha_0 + 270, 1 - sx_0, theta_0 + 180, cz_0, cx_0),
+            (alpha_0 + 270, sx_0, theta_0 + 270, cx_0, cz_0),
+        ]
+
+        best_params = None
+        best_residual = float("inf")
+        lower_bounds = np.array(
+            [-720.0, 0.02, -720.0, child_scale_min, child_scale_min],
+            dtype=np.float64,
+        )
+        upper_bounds = np.array(
+            [720.0, 0.98, 720.0, max_child_scale, max_child_scale], dtype=np.float64
+        )
+
+        for candidate in candidates:
+            initial = (
+                float(candidate[0]),
+                float(np.clip(candidate[1], 0.02, 0.98)),
+                float(candidate[2]),
+                max(float(candidate[3]), child_scale_min),
+                max(float(candidate[4]), child_scale_min),
+            )
+            try:
+                optimized = least_squares(
+                    equations,
+                    initial,
+                    bounds=(lower_bounds, upper_bounds),
+                    method="trf",
+                    max_nfev=MeshRenderConfig.SOLVER_MAX_NFEV,
+                    ftol=1e-12,
+                    xtol=1e-12,
+                    gtol=1e-12,
+                )
+            except Exception:
+                continue
+
+            residual = float(np.sum(optimized.fun**2))
+            solved = optimized.x
+            if (
+                residual < best_residual
+                and 0 < solved[1] < 1
+                and solved[3] > 0
+                and solved[4] > 0
+            ):
+                best_residual = residual
+                best_params = solved
+            if residual < MeshRenderConfig.SOLVER_EARLY_BREAK_RESIDUAL_TOL:
+                break
+
+        if best_params is None:
+            return {"reachable": False, "residual": float("inf")}
+
+        alpha, sx, theta, cx, cz = best_params
+        sz = 1.0 - sx
+        eff_x, eff_z = self.effective_scale(sx, sz, theta)
+        return {
+            "px": float(translation[0]),
+            "pz": float(translation[1]),
+            "alpha": float(alpha % 360),
+            "sx": float(sx),
+            "sz": float(sz),
+            "theta": float(theta % 360),
+            "cx": float(cx),
+            "cz": float(cz),
+            # 既存互換のため平均スカラーも保持する。
+            "cs": float(0.5 * (cx + cz)),
+            "child_sx": float(cx / eff_x),
+            "child_sz": float(cz / eff_z),
+            "residual": best_residual,
+            "reachable": best_residual < MeshRenderConfig.SOLVER_REACHABLE_RESIDUAL_TOL,
+        }
 
 
 def hex_to_color(hex_color):
@@ -724,179 +891,6 @@ def hex_to_color(hex_color):
     g = int(hex_color[2:4], 16) / 255.0
     b = int(hex_color[4:6], 16) / 255.0
     return {"r": r, "g": g, "b": b, "a": 1.0}
-
-
-def blend_colors(fg_color, bg_color, pixel_value):
-    """Blend foreground and background using grayscale brightness."""
-    t = pixel_value / 255.0
-    return {
-        "r": bg_color["r"] * (1.0 - t) + fg_color["r"] * t,
-        "g": bg_color["g"] * (1.0 - t) + fg_color["g"] * t,
-        "b": bg_color["b"] * (1.0 - t) + fg_color["b"] * t,
-        "a": 1.0,
-    }
-
-
-def resolve_pixel_color(pixel_value, fg_color, bg_color, antialias):
-    """Return per-pixel color based on antialias setting."""
-    if not antialias:
-        return fg_color
-    return blend_colors(fg_color, bg_color, pixel_value)
-
-
-def colors_close(color_a, color_b, threshold):
-    if threshold <= 0:
-        return color_a == color_b
-    for channel in ("r", "g", "b"):
-        if abs(color_a[channel] - color_b[channel]) > threshold:
-            return False
-    return True
-
-
-def pixels_to_planes(
-    pixels,
-    plane_template,
-    spacing=0.05,
-    threshold=1,
-    color=None,
-    edge_color=None,
-    antialias=True,
-    scale=1.0,
-    start_x=None,
-    start_z=None,
-    merge_horizontal=False,
-    merge_color_threshold=0.05,
-):
-    """ピクセルデータから平面オブジェクトを生成"""
-    height, width = pixels.shape
-    planes = []
-    runs = []
-    runs_by_row = [[] for _ in range(height)]
-    if color is None:
-        color = {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0}
-    if edge_color is None:
-        edge_color = {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0}
-
-    if start_x is None:
-        start_x = -((width - 1) * spacing) / 2
-    if start_z is None:
-        start_z = -((height - 1) * spacing) / 2
-
-    effective_threshold = 1 if antialias else 128
-
-    def flush_run(run_start, run_end, run_color, row_index):
-        run_length = run_end - run_start + 1
-        run_info = {
-            "start": run_start,
-            "end": run_end,
-            "length": run_length,
-            "row": row_index,
-            "color": run_color,
-        }
-        runs.append(run_info)
-        runs_by_row[row_index].append(run_info)
-
-    def add_plane(run_start, run_end, run_color, row_start, row_end):
-        run_length = run_end - run_start + 1
-        run_height = row_end - row_start + 1
-        x_first = start_x + run_start * spacing
-        x_last = start_x + run_end * spacing
-        z_first = start_z + row_start * spacing
-        z_last = start_z + row_end * spacing
-        x = (x_first + x_last) / 2
-        z = (z_first + z_last) / 2
-        y = 0.0
-        plane = create_plane(plane_template, x, y, z, run_color, scale)
-        plane["data"]["scale"]["x"] = scale * run_length
-        plane["data"]["scale"]["z"] = scale * run_height
-        planes.append(plane)
-
-    for row in range(height):
-        run_start = None
-        run_color = None
-        run_end = None
-
-        for col in range(width):
-            pixel_value = pixels[row, col]
-            if pixel_value >= effective_threshold:
-                shaded_color = resolve_pixel_color(
-                    pixel_value, color, edge_color, antialias
-                )
-                if run_start is None:
-                    run_start = col
-                    run_end = col
-                    run_color = shaded_color
-                elif merge_horizontal and colors_close(
-                    shaded_color, run_color, merge_color_threshold
-                ):
-                    run_end = col
-                else:
-                    flush_run(run_start, run_end, run_color, row)
-                    run_start = col
-                    run_end = col
-                    run_color = shaded_color
-            else:
-                if run_start is not None:
-                    flush_run(run_start, run_end, run_color, row)
-                    run_start = None
-                    run_end = None
-                    run_color = None
-
-        if run_start is not None:
-            flush_run(run_start, run_end, run_color, row)
-
-    if not merge_horizontal:
-        for run in runs:
-            add_plane(run["start"], run["end"], run["color"], run["row"], run["row"])
-        return planes, len(runs)
-
-    def color_key(color_value):
-        return (
-            color_value["r"],
-            color_value["g"],
-            color_value["b"],
-            color_value["a"],
-        )
-
-    active_runs = {}
-    for row in range(height):
-        row_runs = runs_by_row[row]
-        next_active = {}
-        for run in row_runs:
-            key = (run["start"], run["end"], color_key(run["color"]))
-            if key in active_runs and active_runs[key]["row_end"] == row - 1:
-                active_runs[key]["row_end"] = row
-                next_active[key] = active_runs[key]
-            else:
-                next_active[key] = {
-                    "start": run["start"],
-                    "end": run["end"],
-                    "color": run["color"],
-                    "row_start": row,
-                    "row_end": row,
-                }
-
-        for key, active in active_runs.items():
-            if key not in next_active:
-                add_plane(
-                    active["start"],
-                    active["end"],
-                    active["color"],
-                    active["row_start"],
-                    active["row_end"],
-                )
-        active_runs = next_active
-
-    for active in active_runs.values():
-        add_plane(
-            active["start"],
-            active["end"],
-            active["color"],
-            active["row_start"],
-            active["row_end"],
-        )
-
-    return planes, len(runs)
 
 
 def build_metadata_folder(folder_obj, metadata: dict, lang="ja"):
@@ -916,53 +910,83 @@ def build_metadata_folder(folder_obj, metadata: dict, lang="ja"):
     return info_folder
 
 
-def generate_text_scene(
-    text,
-    template_scene,
-    plane_template,
-    folder_key,
-    folder_obj,
-    grid_height=60,
-    font_size=100,
-    text_scale=0.25,
-    spacing=None,
-    threshold=1,
-    color=None,
-    edge_color=None,
-    antialias=True,
-    font_path=None,
-    merge_horizontal=False,
-    merge_color_threshold=0.05,
-    generation_metadata=None,
-    lang="ja",
-):
-    """テキストから3Dシーンを生成"""
-    # spacing = scale × 0.2 の関係を利用
-    if spacing is None:
-        spacing = text_scale * SPACING_RATIO
-    plane_scale = text_scale
+class DotRenderPipeline:
+    """ドット(平面)レンダリング関連の設定と処理入口を集約する。"""
 
-    # 1. テキストを画像に変換（プレビュー用）
-    font = load_font(font_size, font_path)
-    img = text_to_image(text, font_size=font_size, font=font)
-    canvas_width, canvas_height = compute_canvas_size(text, font, CHAR_CANVAS_PADDING)
+    Config = DotRenderConfig
 
-    # 2. 1文字ごとに平面を生成
-    per_char_resolution = grid_height
-    grid_width = compute_grid_width_from_image(img, per_char_resolution)
+    @staticmethod
+    def compute_canvas_height(text, font, padding):
+        ascent, descent = font.getmetrics()
+        return (ascent + descent) + padding * 2
 
-    # グリッド幅に合わせてテキスト全体の左右スケールを揃える。
-    global_start_x = -((grid_width - 1) * spacing) / 2
-    global_start_z = -((grid_height - 1) * spacing) / 2
-    effective_threshold = 1 if antialias else 128
+    @staticmethod
+    def compute_canvas_size(text, font, padding):
+        max_char_width = 0
+        dummy_img = Image.new("L", (1, 1))
+        dummy_draw = ImageDraw.Draw(dummy_img)
+        for char in text:
+            bbox = dummy_draw.textbbox((0, 0), char, font=font, anchor="ls")
+            max_char_width = max(max_char_width, bbox[2] - bbox[0])
+        max_char_width = max(1, max_char_width)
+        return max_char_width + padding * 2, DotRenderPipeline.compute_canvas_height(
+            text, font, padding
+        )
 
-    # PILの文字中心比率を使って、各文字の配置基準を決める。
-    desired_centers = compute_text_center_ratios(text, font, img.width)
-    (
-        char_pixels_list,
-        char_center_cols,
-        raw_plane_count,
-    ) = build_char_pixels(
+    @staticmethod
+    def compute_layout(text_input, per_char_resolution, text_height, plane_size_factor):
+        grid_width = max(1, per_char_resolution * max(1, len(text_input)))
+        grid_height = per_char_resolution
+        pixel_size = text_height / per_char_resolution
+        text_scale = (pixel_size / DotRenderConfig.SPACING_RATIO) * plane_size_factor
+        spacing = pixel_size
+        return {
+            "grid_width": grid_width,
+            "grid_height": grid_height,
+            "pixel_size": pixel_size,
+            "text_scale": text_scale,
+            "spacing": spacing,
+        }
+
+    @staticmethod
+    def measure_text_advance(draw, font, value):
+        """PILのメトリクスから文字列のアドバンス幅を取得する。"""
+        if hasattr(draw, "textlength"):
+            return draw.textlength(value, font=font)
+        if hasattr(font, "getlength"):
+            return font.getlength(value)
+        bbox = draw.textbbox((0, 0), value, font=font, anchor="ls")
+        return bbox[2] - bbox[0]
+
+    @staticmethod
+    def compute_text_center_ratios(text, font, img_width):
+        """PILの描画位置に基づき、各文字の中心Xの比率(0-1)を返す。"""
+        dummy_img = Image.new("L", (1, 1))
+        dummy_draw = ImageDraw.Draw(dummy_img)
+        text_bbox = dummy_draw.textbbox((0, 0), text, font=font, anchor="ls")
+        text_left = text_bbox[0]
+        text_width = max(1, text_bbox[2] - text_bbox[0])
+        x_offset = (img_width - text_width) // 2 - text_left
+
+        centers = []
+        for index, char in enumerate(text):
+            advance = DotRenderPipeline.measure_text_advance(
+                dummy_draw, font, text[:index]
+            )
+            char_bbox = dummy_draw.textbbox((advance, 0), char, font=font, anchor="ls")
+            if char_bbox is None or (char_bbox[2] - char_bbox[0]) == 0:
+                char_advance = DotRenderPipeline.measure_text_advance(
+                    dummy_draw, font, char
+                )
+                center = advance + char_advance / 2
+            else:
+                center = (char_bbox[0] + char_bbox[2]) / 2
+            center_image = x_offset + center
+            centers.append(center_image / max(1, img_width))
+        return centers
+
+    @staticmethod
+    def build_char_pixels(
         text,
         font,
         font_size,
@@ -970,12 +994,42 @@ def generate_text_scene(
         canvas_width,
         canvas_height,
         effective_threshold,
-    )
-    # プレビューは元画像をグリッドサイズに合わせて縮小する。
-    preview_pixels = build_preview_from_image(img, grid_width, grid_height)
+    ):
+        """各文字を描画し、1文字分の正方形ピクセルグリッドへ縮小する。"""
+        char_pixels_list = []
+        char_center_cols = []
+        raw_plane_count = 0
 
-    # 文字ごとの平面を構築し、フォルダにまとめる。
-    char_folders, plane_count, plane_count_horizontal = build_char_folders(
+        # 各文字を同一サイズのキャンバスへ描画して、等解像度のピクセルへ変換する。
+        for char in text:
+            char_img = text_to_image(
+                char,
+                font_size=font_size,
+                font=font,
+                canvas_width=canvas_width,
+                canvas_height=canvas_height,
+            )
+            char_pixels = resample_image(
+                char_img,
+                per_char_resolution,
+                per_char_resolution,
+            )
+            raw_plane_count += int(np.sum(char_pixels >= effective_threshold))
+
+            # 文字の見た目中心を求めるために、非ゼロ列の範囲を測る。
+            nonzero_cols = np.where(char_pixels >= effective_threshold)[1]
+            if nonzero_cols.size == 0:
+                center_col = (per_char_resolution - 1) / 2
+            else:
+                center_col = (nonzero_cols.min() + nonzero_cols.max()) / 2
+
+            char_pixels_list.append(char_pixels)
+            char_center_cols.append(center_col)
+
+        return char_pixels_list, char_center_cols, raw_plane_count
+
+    @staticmethod
+    def build_char_folders(
         text,
         char_pixels_list,
         char_center_cols,
@@ -994,138 +1048,405 @@ def generate_text_scene(
         per_char_resolution,
         merge_horizontal,
         merge_color_threshold,
-    )
+    ):
+        """文字ごとの平面とフォルダを生成し、中心比率に沿って配置する。"""
+        char_folders = []
+        plane_count = 0
+        plane_count_horizontal = 0
 
-    # 3. シーンを作成
-    scene = HoneycomeSceneData()
-    scene.version = template_scene.version
-    scene.dataVersion = template_scene.dataVersion
-    scene.user_id = template_scene.user_id
-    scene.data_id = str(uuid.uuid4())
-    scene.title = f"{get_text('scene_title_prefix', lang)}{text}"
-    scene.unknown_1 = template_scene.unknown_1
-    scene.unknown_2 = template_scene.unknown_2
-    scene.unknown_tail_1 = template_scene.unknown_tail_1
-    scene.unknown_tail_2 = template_scene.unknown_tail_2
-    scene.unknown_tail_3 = template_scene.unknown_tail_3
-    scene.unknown_tail_4 = template_scene.unknown_tail_4
-    scene.unknown_tail_5 = template_scene.unknown_tail_5
-    scene.unknown_tail_6 = template_scene.unknown_tail_6
-    scene.unknown_tail_7 = template_scene.unknown_tail_7
-    scene.unknown_tail_8 = template_scene.unknown_tail_8
-    scene.unknown_tail_9 = template_scene.unknown_tail_9
-    scene.unknown_tail_10 = template_scene.unknown_tail_10
-    scene.frame_filename = template_scene.frame_filename
-    scene.unknown_tail_11 = template_scene.unknown_tail_11
-    scene.footer_marker = template_scene.footer_marker
-    scene.unknown_tail_extra = template_scene.unknown_tail_extra
-    scene.image = template_scene.image
+        for index, char in enumerate(text):
+            # 左右反転を補正し、座標系の向きに合わせる。
+            char_pixels = np.fliplr(char_pixels_list[index])
+            center_col = char_center_cols[index]
 
-    new_folder = copy.deepcopy(folder_obj)
-    new_folder["data"]["name"] = f"{get_text('folder_title_prefix', lang)}{text}"
-    new_folder["data"]["treeState"] = 1
+            # 文字画像の左端位置（X）を、文字ごとの解像度に基づいて配置する。
+            char_start_x = global_start_x + index * per_char_resolution * spacing
+            center_x = char_start_x + center_col * spacing
+            planes, planes_horizontal = DotRenderPipeline.pixels_to_planes(
+                char_pixels,
+                plane_template,
+                spacing=spacing,
+                threshold=threshold,
+                color=color,
+                edge_color=edge_color,
+                antialias=antialias,
+                scale=plane_scale,
+                start_x=char_start_x,
+                start_z=global_start_z,
+                merge_horizontal=merge_horizontal,
+                merge_color_threshold=merge_color_threshold,
+            )
+            # ローカル中心に合わせて平面をオフセットする。
+            for plane in planes:
+                plane["data"]["position"]["x"] -= center_x
+            plane_count += len(planes)
+            plane_count_horizontal += planes_horizontal
 
-    # 文字情報フォルダを先頭に追加（再現用メタデータ）
-    if generation_metadata:
-        metadata_folder = build_metadata_folder(folder_obj, generation_metadata, lang)
-        new_folder["data"]["child"] = [metadata_folder] + char_folders
-    else:
-        new_folder["data"]["child"] = char_folders
+            # PIL上の中心比率を、シーンのX座標へ変換する。
+            desired_center_x = global_start_x + (grid_width - 1) * spacing * (
+                1.0 - desired_centers[index]
+            )
 
-    scene.objects = {folder_key: new_folder}
+            char_folder = copy.deepcopy(folder_obj)
+            char_label = char if char.strip() else "空白"
+            char_folder["data"]["name"] = f"文字_{index + 1}_{char_label}"
+            char_folder["data"]["position"]["x"] = desired_center_x
+            char_folder["data"]["child"] = planes
+            char_folder["data"]["treeState"] = 1
+            char_folders.append(char_folder)
 
-    return (
-        scene,
-        img,
-        preview_pixels,
-        plane_count,
-        plane_count_horizontal,
-        raw_plane_count,
-    )
+        return char_folders, plane_count, plane_count_horizontal
 
+    @staticmethod
+    def blend_colors(fg_color, bg_color, pixel_value):
+        """Blend foreground and background using grayscale brightness."""
+        t = pixel_value / 255.0
+        return {
+            "r": bg_color["r"] * (1.0 - t) + fg_color["r"] * t,
+            "g": bg_color["g"] * (1.0 - t) + fg_color["g"] * t,
+            "b": bg_color["b"] * (1.0 - t) + fg_color["b"] * t,
+            "a": 1.0,
+        }
 
-# メイン UI
-try:
-    # テンプレート読み込み
-    template_scene, plane_template, folder_key, folder_obj = load_template()
+    @staticmethod
+    def resolve_pixel_color(pixel_value, fg_color, bg_color, antialias):
+        """Return per-pixel color based on antialias setting."""
+        if not antialias:
+            return fg_color
+        return DotRenderPipeline.blend_colors(fg_color, bg_color, pixel_value)
 
-    if template_scene is None:
-        st.stop()
+    @staticmethod
+    def colors_close(color_a, color_b, threshold):
+        if threshold <= 0:
+            return color_a == color_b
+        for channel in ("r", "g", "b"):
+            if abs(color_a[channel] - color_b[channel]) > threshold:
+                return False
+        return True
 
-    with st.expander(f"❓ {get_text('qa_title', lang)}", expanded=False):
-        st.markdown(get_text("qa_content", lang).strip())
+    @staticmethod
+    def pixels_to_planes(
+        pixels,
+        plane_template,
+        spacing=0.05,
+        threshold=1,
+        color=None,
+        edge_color=None,
+        antialias=True,
+        scale=1.0,
+        start_x=None,
+        start_z=None,
+        merge_horizontal=False,
+        merge_color_threshold=0.05,
+    ):
+        """ピクセルデータから平面オブジェクトを生成"""
+        height, width = pixels.shape
+        planes = []
+        runs = []
+        runs_by_row = [[] for _ in range(height)]
+        if color is None:
+            color = {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0}
+        if edge_color is None:
+            edge_color = {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0}
 
-    # メインページでパラメータ設定
-    st.header(f"⚙️ {get_text('param_settings', lang)}")
+        if start_x is None:
+            start_x = -((width - 1) * spacing) / 2
+        if start_z is None:
+            start_z = -((height - 1) * spacing) / 2
 
-    # テキスト入力
-    text_input = st.text_input(
-        f"📝 {get_text('text_input', lang)}",
-        value="",
-        max_chars=50,
-        placeholder=get_text("text_placeholder", lang),
-    )
-    available_fonts = list_available_fonts()
-    selected_font = select_font_option(available_fonts, "MPLUSRounded1c-Regular.ttf")
+        effective_threshold = 1 if antialias else 128
 
-    # 色設定
-    color_hex = st.color_picker(get_text("color_label", lang), value="#FFFFFF")
-    color_alpha = st.slider(
-        get_text("alpha_label", lang),
-        min_value=0.0,
-        max_value=1.0,
-        value=1.0,
-        step=0.05,
-    )
-    st.markdown("---")
+        def flush_run(run_start, run_end, run_color, row_index):
+            run_length = run_end - run_start + 1
+            run_info = {
+                "start": run_start,
+                "end": run_end,
+                "length": run_length,
+                "row": row_index,
+                "color": run_color,
+            }
+            runs.append(run_info)
+            runs_by_row[row_index].append(run_info)
 
-    # 文字の大きさ（縦幅）
-    st.subheader(f"📏 {get_text('text_size_title', lang)}")
-    st.text(get_text("text_size_help", lang))
+        def add_plane(run_start, run_end, run_color, row_start, row_end):
+            run_length = run_end - run_start + 1
+            run_height = row_end - row_start + 1
+            x_first = start_x + run_start * spacing
+            x_last = start_x + run_end * spacing
+            z_first = start_z + row_start * spacing
+            z_last = start_z + row_end * spacing
+            x = (x_first + x_last) / 2
+            z = (z_first + z_last) / 2
+            y = 0.0
+            plane = create_plane(plane_template, x, y, z, run_color, scale)
+            plane["data"]["scale"]["x"] = scale * run_length
+            plane["data"]["scale"]["z"] = scale * run_height
+            planes.append(plane)
 
-    with st.expander(get_text("text_size_example", lang), expanded=False):
-        st.markdown("![font size example](https://i.imgur.com/y04URY3.jpeg)")
+        for row in range(height):
+            run_start = None
+            run_color = None
+            run_end = None
 
-    text_height = st.slider(
-        get_text("height_label", lang),
-        min_value=0.01,
-        max_value=2.0,
-        value=0.5,
-        step=0.01,
-    )
+            for col in range(width):
+                pixel_value = pixels[row, col]
+                if pixel_value >= effective_threshold:
+                    shaded_color = DotRenderPipeline.resolve_pixel_color(
+                        pixel_value, color, edge_color, antialias
+                    )
+                    if run_start is None:
+                        run_start = col
+                        run_end = col
+                        run_color = shaded_color
+                    elif merge_horizontal and DotRenderPipeline.colors_close(
+                        shaded_color, run_color, merge_color_threshold
+                    ):
+                        run_end = col
+                    else:
+                        flush_run(run_start, run_end, run_color, row)
+                        run_start = col
+                        run_end = col
+                        run_color = shaded_color
+                else:
+                    if run_start is not None:
+                        flush_run(run_start, run_end, run_color, row)
+                        run_start = None
+                        run_end = None
+                        run_color = None
 
-    st.markdown("---")
+            if run_start is not None:
+                flush_run(run_start, run_end, run_color, row)
 
-    # 詳細設定（エキスパンダーで折りたたみ）
-    with st.expander(f"🎨 {get_text('advanced_settings', lang)}", expanded=False):
+        if not merge_horizontal:
+            for run in runs:
+                add_plane(
+                    run["start"], run["end"], run["color"], run["row"], run["row"]
+                )
+            return planes, len(runs)
+
+        def color_key(color_value):
+            return (
+                color_value["r"],
+                color_value["g"],
+                color_value["b"],
+                color_value["a"],
+            )
+
+        active_runs = {}
+        for row in range(height):
+            row_runs = runs_by_row[row]
+            next_active = {}
+            for run in row_runs:
+                key = (run["start"], run["end"], color_key(run["color"]))
+                if key in active_runs and active_runs[key]["row_end"] == row - 1:
+                    active_runs[key]["row_end"] = row
+                    next_active[key] = active_runs[key]
+                else:
+                    next_active[key] = {
+                        "start": run["start"],
+                        "end": run["end"],
+                        "color": run["color"],
+                        "row_start": row,
+                        "row_end": row,
+                    }
+
+            for key, active in active_runs.items():
+                if key not in next_active:
+                    add_plane(
+                        active["start"],
+                        active["end"],
+                        active["color"],
+                        active["row_start"],
+                        active["row_end"],
+                    )
+            active_runs = next_active
+
+        for active in active_runs.values():
+            add_plane(
+                active["start"],
+                active["end"],
+                active["color"],
+                active["row_start"],
+                active["row_end"],
+            )
+
+        return planes, len(runs)
+
+    @staticmethod
+    def generate_text_scene(
+        text,
+        template_scene,
+        plane_template,
+        folder_key,
+        folder_obj,
+        grid_height=60,
+        font_size=100,
+        text_scale=0.25,
+        spacing=None,
+        threshold=1,
+        color=None,
+        edge_color=None,
+        antialias=True,
+        font_path=None,
+        merge_horizontal=False,
+        merge_color_threshold=0.05,
+        generation_metadata=None,
+        lang="ja",
+    ):
+        """テキストから3Dシーンを生成"""
+        # spacing = scale × 0.2 の関係を利用
+        if spacing is None:
+            spacing = text_scale * DotRenderConfig.SPACING_RATIO
+        plane_scale = text_scale
+
+        # 1. テキストを画像に変換（プレビュー用）
+        font = load_font(font_size, font_path)
+        img = text_to_image(text, font_size=font_size, font=font)
+        canvas_width, canvas_height = DotRenderPipeline.compute_canvas_size(
+            text, font, DotRenderConfig.CHAR_CANVAS_PADDING
+        )
+
+        # 2. 1文字ごとに平面を生成
+        per_char_resolution = grid_height
+        grid_width = compute_grid_width_from_image(img, per_char_resolution)
+
+        # グリッド幅に合わせてテキスト全体の左右スケールを揃える。
+        global_start_x = -((grid_width - 1) * spacing) / 2
+        global_start_z = -((grid_height - 1) * spacing) / 2
+        effective_threshold = 1 if antialias else 128
+
+        # PILの文字中心比率を使って、各文字の配置基準を決める。
+        desired_centers = DotRenderPipeline.compute_text_center_ratios(
+            text, font, img.width
+        )
+        (
+            char_pixels_list,
+            char_center_cols,
+            raw_plane_count,
+        ) = DotRenderPipeline.build_char_pixels(
+            text,
+            font,
+            font_size,
+            per_char_resolution,
+            canvas_width,
+            canvas_height,
+            effective_threshold,
+        )
+        # プレビューは元画像をグリッドサイズに合わせて縮小する。
+        preview_pixels = build_preview_from_image(img, grid_width, grid_height)
+
+        # 文字ごとの平面を構築し、フォルダにまとめる。
+        char_folders, plane_count, plane_count_horizontal = (
+            DotRenderPipeline.build_char_folders(
+                text,
+                char_pixels_list,
+                char_center_cols,
+                desired_centers,
+                plane_template,
+                folder_obj,
+                grid_width,
+                spacing,
+                threshold,
+                color,
+                edge_color,
+                antialias,
+                plane_scale,
+                global_start_x,
+                global_start_z,
+                per_char_resolution,
+                merge_horizontal,
+                merge_color_threshold,
+            )
+        )
+
+        # 3. シーンを作成
+        scene = HoneycomeSceneData()
+        scene.version = template_scene.version
+        scene.dataVersion = template_scene.dataVersion
+        scene.user_id = template_scene.user_id
+        scene.data_id = str(uuid.uuid4())
+        scene.title = f"{get_text('scene_title_prefix', lang)}{text}"
+        scene.unknown_1 = template_scene.unknown_1
+        scene.unknown_2 = template_scene.unknown_2
+        scene.unknown_tail_1 = template_scene.unknown_tail_1
+        scene.unknown_tail_2 = template_scene.unknown_tail_2
+        scene.unknown_tail_3 = template_scene.unknown_tail_3
+        scene.unknown_tail_4 = template_scene.unknown_tail_4
+        scene.unknown_tail_5 = template_scene.unknown_tail_5
+        scene.unknown_tail_6 = template_scene.unknown_tail_6
+        scene.unknown_tail_7 = template_scene.unknown_tail_7
+        scene.unknown_tail_8 = template_scene.unknown_tail_8
+        scene.unknown_tail_9 = template_scene.unknown_tail_9
+        scene.unknown_tail_10 = template_scene.unknown_tail_10
+        scene.frame_filename = template_scene.frame_filename
+        scene.unknown_tail_11 = template_scene.unknown_tail_11
+        scene.footer_marker = template_scene.footer_marker
+        scene.unknown_tail_extra = template_scene.unknown_tail_extra
+        scene.image = template_scene.image
+
+        new_folder = copy.deepcopy(folder_obj)
+        new_folder["data"]["name"] = f"{get_text('folder_title_prefix', lang)}{text}"
+        new_folder["data"]["treeState"] = 1
+
+        # 文字情報フォルダを先頭に追加（再現用メタデータ）
+        if generation_metadata:
+            metadata_folder = build_metadata_folder(
+                folder_obj, generation_metadata, lang
+            )
+            new_folder["data"]["child"] = [metadata_folder] + char_folders
+        else:
+            new_folder["data"]["child"] = char_folders
+
+        scene.objects = {folder_key: new_folder}
+
+        return (
+            scene,
+            img,
+            preview_pixels,
+            plane_count,
+            plane_count_horizontal,
+            raw_plane_count,
+        )
+
+    @staticmethod
+    def default_advanced_settings():
+        return {
+            "per_char_resolution": DotRenderConfig.DEFAULT_RESOLUTION,
+            "threshold": 1,
+            "antialias": False,
+            "edge_color_hex": "#000000",
+            "merge_horizontal": False,
+            "merge_color_threshold": 0.0,
+            "plane_size_factor": 1.0,
+        }
+
+    @staticmethod
+    def render_advanced_settings(lang):
+        settings = DotRenderPipeline.default_advanced_settings()
         col1, col2 = st.columns(2)
-
         with col1:
-            # 1文字あたりの解像度設定
-            per_char_resolution = st.slider(
+            settings["per_char_resolution"] = st.slider(
                 get_text("resolution_label", lang),
                 min_value=10,
                 max_value=200,
-                value=100,
+                value=DotRenderConfig.DEFAULT_RESOLUTION,
                 step=5,
                 help=get_text("resolution_help", lang),
             )
-            font_size = FONT_SIZE
-
         with col2:
-            threshold = 1
-
-        antialias = st.checkbox(get_text("antialias_label", lang), value=False)
-        edge_color_hex = st.color_picker(
+            settings["threshold"] = 1
+        settings["antialias"] = st.checkbox(
+            get_text("antialias_label", lang), value=False
+        )
+        settings["edge_color_hex"] = st.color_picker(
             get_text("antialias_color_label", lang), value="#000000"
         )
-        merge_horizontal = st.checkbox(
+        settings["merge_horizontal"] = st.checkbox(
             get_text("merge_horizontal_label", lang),
             value=True,
             help=get_text("merge_horizontal_help", lang),
         )
-        merge_color_threshold = 0.0
-        plane_size_factor = st.slider(
+        settings["plane_size_factor"] = st.slider(
             get_text("plane_size_label", lang),
             min_value=0.5,
             max_value=1.0,
@@ -1133,40 +1454,1413 @@ try:
             step=0.05,
             help=get_text("plane_size_help", lang),
         )
-        plane_preset = st.selectbox(
-            get_text("plane_type_label", lang),
-            options=[get_text("plane_map", lang), get_text("plane_chara", lang)],
-            index=0,
-            help=get_text("plane_type_help", lang),
+        return settings
+
+    @staticmethod
+    def build_generation_metadata(
+        *,
+        lang,
+        selected_font,
+        color_hex,
+        color_alpha,
+        text_height,
+        plane_preset_key,
+        light_cancel,
+        dot_settings,
+    ):
+        return {
+            get_text("meta_font", lang): selected_font.name
+            if selected_font
+            else "default",
+            get_text("meta_color", lang): color_hex,
+            get_text("meta_alpha", lang): color_alpha,
+            get_text("meta_text_height", lang): text_height,
+            get_text("meta_resolution", lang): dot_settings["per_char_resolution"],
+            get_text("meta_antialias", lang): (
+                "ON" if dot_settings["antialias"] else "OFF"
+            ),
+            get_text("meta_aa_color", lang): dot_settings["edge_color_hex"],
+            get_text("meta_merge_horizontal", lang): (
+                "ON" if dot_settings["merge_horizontal"] else "OFF"
+            ),
+            get_text("meta_plane_size", lang): dot_settings["plane_size_factor"],
+            get_text("meta_plane_type", lang): plane_preset_key,
+            get_text("meta_light_influence", lang): light_cancel,
+            get_text("meta_render_mode", lang): get_text("render_mode_dot", lang),
+            get_text("meta_mesh_flatten_length", lang): "-",
+        }
+
+    @staticmethod
+    def generate_for_main(
+        *,
+        text_input,
+        template_scene,
+        plane_template,
+        folder_key,
+        folder_obj,
+        layout,
+        font_size,
+        color,
+        selected_font,
+        dot_settings,
+        generation_metadata,
+        lang,
+    ):
+        edge_color = hex_to_color(dot_settings["edge_color_hex"])
+        with st.spinner(get_text("generating", lang)):
+            (
+                scene,
+                original_img,
+                preview_pixels,
+                plane_count,
+                plane_count_horizontal,
+                raw_plane_count,
+            ) = DotRenderPipeline.generate_scene(
+                text=text_input,
+                template_scene=template_scene,
+                plane_template=plane_template,
+                folder_key=folder_key,
+                folder_obj=folder_obj,
+                grid_height=layout["grid_height"],
+                font_size=font_size,
+                text_scale=layout["text_scale"],
+                spacing=layout["spacing"],
+                threshold=dot_settings["threshold"],
+                color=color,
+                edge_color=edge_color,
+                antialias=dot_settings["antialias"],
+                font_path=selected_font,
+                merge_horizontal=dot_settings["merge_horizontal"],
+                merge_color_threshold=dot_settings["merge_color_threshold"],
+                generation_metadata=generation_metadata,
+                lang=lang,
+            )
+        return {
+            "scene": scene,
+            "original_img": original_img,
+            "preview_pixels": preview_pixels,
+            "plane_count": plane_count,
+            "plane_count_horizontal": plane_count_horizontal,
+            "raw_plane_count": raw_plane_count,
+            "mesh_stats": None,
+            "triangulation_preview": None,
+        }
+
+    generate_scene = generate_text_scene
+
+
+class MeshRenderPipeline:
+    """メッシュ(三角形)レンダリング関連の設定と処理入口を集約する。"""
+
+    Config = MeshRenderConfig
+    Solver = TriangleSolverOptimized
+
+    @staticmethod
+    def find_missing_glyphs(text, font_path):
+        """フォント cmap に存在しない文字(空白類は除外)を返す。"""
+        tt_font = TTFont(str(font_path))
+        try:
+            cmap = tt_font.getBestCmap() or {}
+            missing = []
+            seen = set()
+            for char in text:
+                if char.isspace():
+                    continue
+                if ord(char) not in cmap and char not in seen:
+                    missing.append(char)
+                    seen.add(char)
+            return missing
+        finally:
+            tt_font.close()
+
+    @staticmethod
+    def build_mesh_char_folders(
+        text,
+        char_mesh_data,
+        plane_template,
+        triangle_template,
+        folder_obj,
+        color,
+        reconstruction_max_abs_tol=MeshRenderConfig.RECONSTRUCTION_MAX_ABS_TOL,
+        progress_callback=None,
+    ):
+        """文字輪郭を wildmeshing で三角形分割し、親平面+子三角形で表現する。"""
+        solver = TriangleSolverOptimized(MeshRenderConfig.SOURCE_TRIANGLE)
+        char_folders = []
+        triangle_count = 0
+        raw_triangle_count = 0
+        solve_failed_count = 0
+        reconstruction_failed_count = 0
+        accepted_max_abs_errors = []
+        accepted_rmse_errors = []
+        triangle_status_records = []
+        triangles_per_char = []
+        char_count = len(text)
+
+        for index, char in enumerate(text):
+            char_data = char_mesh_data[index]
+            contours = char_data["contours"]
+            triangles = MeshRenderPipeline.triangulate_contours(contours)
+            triangles_per_char.append(triangles)
+            raw_triangle_count += len(triangles)
+
+            if progress_callback is not None:
+                progress_callback(
+                    stage="triangulate",
+                    current=index + 1,
+                    total=char_count,
+                    note=f"{char} ({len(triangles)})",
+                )
+
+        total_triangles = sum(len(triangles) for triangles in triangles_per_char)
+        processed_triangles = 0
+        solve_progress_step = (
+            max(1, total_triangles // 250) if total_triangles > 0 else 1
         )
-        light_cancel = st.slider(
-            get_text("light_cancel_label", lang),
+
+        for index, char in enumerate(text):
+            char_data = char_mesh_data[index]
+            triangles = triangles_per_char[index]
+            triangle_objects = []
+            folder_x = char_data["folder_x"]
+            for triangle in triangles:
+                processed_triangles += 1
+                if progress_callback is not None and (
+                    processed_triangles == 1
+                    or processed_triangles == total_triangles
+                    or (processed_triangles % solve_progress_step) == 0
+                ):
+                    progress_callback(
+                        stage="solve",
+                        current=processed_triangles,
+                        total=total_triangles,
+                        note=f"{char}",
+                    )
+
+                triangle_object, solved = MeshRenderPipeline.create_sheared_triangle(
+                    plane_template,
+                    triangle_template,
+                    triangle,
+                    color,
+                    solver,
+                    reconstruction_max_abs_tol=reconstruction_max_abs_tol,
+                )
+                shifted_triangle = triangle.copy()
+                shifted_triangle[:, 0] += folder_x
+                if triangle_object is None:
+                    rejected_reason = solved.get(
+                        "rejected_reason", "solve_not_converged"
+                    )
+                    if rejected_reason == "reconstruction_error":
+                        reconstruction_failed_count += 1
+                        triangle_status_records.append(
+                            {
+                                "triangle": shifted_triangle,
+                                "status": "reconstruction_failed",
+                            }
+                        )
+                    else:
+                        solve_failed_count += 1
+                        triangle_status_records.append(
+                            {
+                                "triangle": shifted_triangle,
+                                "status": "solve_failed",
+                            }
+                        )
+                    continue
+                accepted_max_abs_errors.append(
+                    solved.get("reconstruction_max_abs", 0.0)
+                )
+                accepted_rmse_errors.append(solved.get("reconstruction_rmse", 0.0))
+                triangle_status_records.append(
+                    {"triangle": shifted_triangle, "status": "accepted"}
+                )
+                triangle_objects.append(triangle_object)
+
+            triangle_count += len(triangle_objects)
+
+            char_folder = copy.deepcopy(folder_obj)
+            char_label = char if char.strip() else "空白"
+            char_folder["data"]["name"] = f"文字_{index + 1}_{char_label}"
+            char_folder["data"]["position"]["x"] = char_data["folder_x"]
+            char_folder["data"]["child"] = triangle_objects
+            char_folder["data"]["treeState"] = 1
+            char_folders.append(char_folder)
+
+        mesh_stats = {
+            "solve_failed_count": solve_failed_count,
+            "reconstruction_failed_count": reconstruction_failed_count,
+            "reconstruction_tol": reconstruction_max_abs_tol,
+            "accepted_max_abs_error": (
+                float(max(accepted_max_abs_errors)) if accepted_max_abs_errors else 0.0
+            ),
+            "accepted_rmse": (
+                float(np.mean(accepted_rmse_errors)) if accepted_rmse_errors else 0.0
+            ),
+        }
+        return (
+            char_folders,
+            triangle_count,
+            raw_triangle_count,
+            mesh_stats,
+            triangle_status_records,
+        )
+
+    @staticmethod
+    def build_mesh_triangulation_preview(
+        char_mesh_data, triangle_status_records, width=900, height=360, padding=24
+    ):
+        """文字輪郭と三角形分割結果を2Dプレビュー画像として描画する。"""
+        global_contours = []
+        global_triangles = triangle_status_records or []
+
+        for char_data in char_mesh_data:
+            folder_x = char_data["folder_x"]
+            contours = char_data["contours"]
+            for contour in contours:
+                shifted = contour.copy()
+                shifted[:, 0] += folder_x
+                global_contours.append(shifted)
+
+        if not global_contours and not global_triangles:
+            return None
+
+        points = []
+        for contour in global_contours:
+            points.append(contour)
+        for record in global_triangles:
+            points.append(record["triangle"])
+        all_points = np.vstack(points)
+        min_x = float(np.min(all_points[:, 0]))
+        max_x = float(np.max(all_points[:, 0]))
+        min_y = float(np.min(all_points[:, 1]))
+        max_y = float(np.max(all_points[:, 1]))
+
+        span_x = max(max_x - min_x, 1e-9)
+        span_y = max(max_y - min_y, 1e-9)
+
+        # 右側に凡例専用パネルを確保し、図形と重ならないようにする。
+        legend_gap = 12
+        legend_panel_width = 240
+        plot_left = padding
+        plot_top = padding
+        plot_right = max(
+            plot_left + 1,
+            width - padding - legend_panel_width - legend_gap,
+        )
+        plot_bottom = height - padding
+        plot_width = max(1.0, float(plot_right - plot_left))
+        plot_height = max(1.0, float(plot_bottom - plot_top))
+        scale = min(plot_width / span_x, plot_height / span_y)
+        scaled_width = span_x * scale
+        scaled_height = span_y * scale
+        plot_offset_x = plot_left + (plot_width - scaled_width) * 0.5
+        plot_offset_y = plot_top + (plot_height - scaled_height) * 0.5
+
+        def project(point):
+            # グリフ座標をシーンXZへ正規化する際に反転が入るため、
+            # プレビュー側はX/Yを反転して見た目を元の文字方向に合わせる。
+            x = plot_offset_x + (max_x - point[0]) * scale
+            y = (plot_offset_y + scaled_height) - (max_y - point[1]) * scale
+            return float(x), float(y)
+
+        image = Image.new("RGBA", (width, height), (18, 20, 24, 255))
+        draw = ImageDraw.Draw(image, "RGBA")
+
+        status_style = {
+            "accepted": {
+                "priority": 0,
+                "fill": (64, 180, 255, 35),
+                "outline": (120, 220, 255, 180),
+                "label": "accepted",
+            },
+            "reconstruction_failed": {
+                "priority": 1,
+                "fill": (255, 174, 66, 70),
+                "outline": (255, 196, 122, 220),
+                "label": "reconstruction failed",
+            },
+            "solve_failed": {
+                "priority": 2,
+                "fill": (255, 87, 127, 75),
+                "outline": (255, 130, 164, 230),
+                "label": "solver not converged",
+            },
+        }
+
+        sorted_records = sorted(
+            global_triangles,
+            key=lambda record: status_style.get(
+                record["status"], status_style["accepted"]
+            )["priority"],
+        )
+        for record in sorted_records:
+            style = status_style.get(record["status"], status_style["accepted"])
+            projected = [project(vertex) for vertex in record["triangle"]]
+            draw.polygon(projected, fill=style["fill"], outline=style["outline"])
+
+        for contour in global_contours:
+            projected = [project(vertex) for vertex in contour]
+            if len(projected) >= 2:
+                draw.line(
+                    projected + [projected[0]], fill=(220, 220, 220, 220), width=1
+                )
+
+        legend_x = int(plot_right + legend_gap)
+        legend_y = padding
+        legend_w = max(120, width - legend_x - padding)
+        legend_h = 64
+        draw.rectangle(
+            [(legend_x, legend_y), (legend_x + legend_w, legend_y + legend_h)],
+            fill=(10, 10, 10, 180),
+            outline=(180, 180, 180, 180),
+        )
+        legend_items = [
+            ("solver not converged", status_style["solve_failed"]["outline"]),
+            ("reconstruction failed", status_style["reconstruction_failed"]["outline"]),
+            ("accepted", status_style["accepted"]["outline"]),
+        ]
+        for idx, (label, color) in enumerate(legend_items):
+            top = legend_y + 8 + idx * 18
+            draw.rectangle(
+                [(legend_x + 8, top), (legend_x + 22, top + 12)],
+                fill=color,
+                outline=(230, 230, 230, 230),
+            )
+            draw.text((legend_x + 28, top - 1), label, fill=(235, 235, 235, 240))
+
+        return image
+
+    @staticmethod
+    def recorded_commands_to_contours(recorded_commands):
+        """RecordingPen の move/line コマンド列を輪郭配列へ変換する。"""
+        contours = []
+        current_points = []
+
+        def flush_contour():
+            nonlocal current_points
+            if not current_points:
+                return
+            contour = np.array(current_points, dtype=np.float64)
+            if len(contour) > 1 and np.allclose(contour[0], contour[-1]):
+                contour = contour[:-1]
+            contour = MeshRenderPipeline.dedupe_contour_points(contour)
+            if (
+                len(contour) >= 3
+                and abs(MeshRenderPipeline.polygon_signed_area(contour)) > 1e-9
+            ):
+                contours.append(contour)
+            current_points = []
+
+        for command, args in recorded_commands:
+            if command == "moveTo":
+                flush_contour()
+                current_points = [np.array(args[0], dtype=np.float64)]
+            elif command == "lineTo":
+                point = np.array(args[0], dtype=np.float64)
+                if not current_points:
+                    current_points = [point]
+                else:
+                    current_points.append(point)
+            elif command in ("closePath", "endPath"):
+                flush_contour()
+
+        flush_contour()
+        return contours
+
+    @staticmethod
+    def flatten_glyph_to_contours(glyph, glyph_set, segment_length):
+        """fontPens.FlattenPen を使ってグリフ輪郭を線分化する。"""
+        recording_pen = DecomposingRecordingPen(glyph_set)
+        flatten_pen = FlattenPen(
+            recording_pen,
+            approximateSegmentLength=max(1.0, float(segment_length)),
+            segmentLines=False,
+            filterDoubles=True,
+        )
+        glyph.draw(flatten_pen)
+        return MeshRenderPipeline.recorded_commands_to_contours(recording_pen.value)
+
+    @staticmethod
+    def polygon_signed_area(points):
+        x_values = points[:, 0]
+        y_values = points[:, 1]
+        return 0.5 * (
+            np.dot(x_values, np.roll(y_values, -1))
+            - np.dot(y_values, np.roll(x_values, -1))
+        )
+
+    @staticmethod
+    def dedupe_contour_points(contour, eps=1e-9):
+        if len(contour) <= 1:
+            return contour
+        deduped = [contour[0]]
+        for point in contour[1:]:
+            if np.linalg.norm(point - deduped[-1]) > eps:
+                deduped.append(point)
+        if len(deduped) > 2 and np.linalg.norm(deduped[0] - deduped[-1]) <= eps:
+            deduped = deduped[:-1]
+        return np.array(deduped, dtype=np.float64)
+
+    @staticmethod
+    def point_in_polygon(point, polygon):
+        px, py = point
+        inside = False
+        count = len(polygon)
+        j = count - 1
+        for i in range(count):
+            xi, yi = polygon[i]
+            xj, yj = polygon[j]
+            intersects = ((yi > py) != (yj > py)) and (
+                px < (xj - xi) * (py - yi) / (yj - yi + 1e-15) + xi
+            )
+            if intersects:
+                inside = not inside
+            j = i
+        return inside
+
+    @staticmethod
+    def build_contour_hierarchy(contours):
+        contour_count = len(contours)
+        areas = [
+            abs(MeshRenderPipeline.polygon_signed_area(contour)) for contour in contours
+        ]
+        parents = [-1] * contour_count
+
+        def containment_probes(contour):
+            probes = [np.mean(contour, axis=0)]
+            count = len(contour)
+            for index in range(count):
+                current = contour[index]
+                nxt = contour[(index + 1) % count]
+                probes.append(current)
+                probes.append((current + nxt) * 0.5)
+            return probes
+
+        for index, contour in enumerate(contours):
+            probe_candidates = containment_probes(contour)
+            containers = []
+            for other_index, other_contour in enumerate(contours):
+                if index == other_index:
+                    continue
+                # 親候補は必ず自分より大きい輪郭に限定し、循環参照を防ぐ。
+                if areas[other_index] <= areas[index] + 1e-12:
+                    continue
+                if any(
+                    MeshRenderPipeline.point_in_polygon(probe, other_contour)
+                    for probe in probe_candidates
+                ):
+                    containers.append(other_index)
+            if containers:
+                parents[index] = min(containers, key=lambda idx: areas[idx])
+
+        depths = [0] * contour_count
+        for index in range(contour_count):
+            depth = 0
+            current = parents[index]
+            safety = 0
+            while current != -1 and safety < contour_count:
+                depth += 1
+                current = parents[current]
+                safety += 1
+            depths[index] = depth
+
+        return parents, depths
+
+    @staticmethod
+    def find_polygon_interior_point(polygon):
+        """三角形分割ライブラリ向けに、多角形内部の代表点を返す。"""
+        if len(polygon) < 3:
+            return None
+
+        candidates = [np.mean(polygon, axis=0)]
+
+        min_x = float(np.min(polygon[:, 0]))
+        max_x = float(np.max(polygon[:, 0]))
+        min_y = float(np.min(polygon[:, 1]))
+        max_y = float(np.max(polygon[:, 1]))
+        candidates.append(np.array([(min_x + max_x) * 0.5, (min_y + max_y) * 0.5]))
+
+        count = len(polygon)
+        for index in range(count):
+            p_prev = polygon[(index - 1) % count]
+            p_curr = polygon[index]
+            p_next = polygon[(index + 1) % count]
+            candidates.append((p_prev + p_curr + p_next) / 3.0)
+            candidates.append((p_curr + p_next) * 0.5)
+
+        # 追加のグリッド候補で、凹多角形でも内点を拾いやすくする。
+        for tx in (0.2, 0.35, 0.5, 0.65, 0.8):
+            for ty in (0.2, 0.35, 0.5, 0.65, 0.8):
+                candidates.append(
+                    np.array(
+                        [
+                            min_x * (1.0 - tx) + max_x * tx,
+                            min_y * (1.0 - ty) + max_y * ty,
+                        ],
+                        dtype=np.float64,
+                    )
+                )
+
+        for candidate in candidates:
+            if MeshRenderPipeline.point_in_polygon(candidate, polygon):
+                return candidate
+        return None
+
+    @staticmethod
+    def triangulate_contours(contours):
+        valid_contours = []
+        for contour in contours:
+            normalized = MeshRenderPipeline.dedupe_contour_points(contour)
+            if (
+                len(normalized) >= 3
+                and abs(MeshRenderPipeline.polygon_signed_area(normalized)) > 1e-9
+            ):
+                valid_contours.append(normalized)
+        if not valid_contours:
+            return []
+
+        parents, depths = MeshRenderPipeline.build_contour_hierarchy(valid_contours)
+        triangles = []
+
+        for outer_index, depth in enumerate(depths):
+            if depth % 2 != 0:
+                continue
+
+            hole_indices = [
+                contour_index
+                for contour_index, parent_index in enumerate(parents)
+                if parent_index == outer_index and depths[contour_index] == depth + 1
+            ]
+            outer_ring = valid_contours[outer_index]
+            hole_rings = [valid_contours[hole_index] for hole_index in hole_indices]
+
+            vertices = []
+            segments = []
+            holes = []
+
+            def add_ring_segments(ring):
+                start = len(vertices)
+                ring_count = len(ring)
+                for point in ring:
+                    vertices.append([float(point[0]), float(point[1])])
+                for index in range(ring_count):
+                    next_index = (index + 1) % ring_count
+                    segments.append([start + index, start + next_index])
+
+            add_ring_segments(outer_ring)
+            for hole_ring in hole_rings:
+                add_ring_segments(hole_ring)
+                hole_point = MeshRenderPipeline.find_polygon_interior_point(hole_ring)
+                if hole_point is not None:
+                    holes.append([float(hole_point[0]), float(hole_point[1])])
+
+            if len(vertices) < 3 or len(segments) < 3:
+                continue
+
+            tri_vertices_input = np.asarray(vertices, dtype=np.float64)
+            tri_segments_input = np.asarray(segments, dtype=np.int32)
+            tri_holes_input = (
+                np.asarray(holes, dtype=np.float64)
+                if holes
+                else np.empty((0, 2), dtype=np.float64)
+            )
+
+            try:
+                tri_vertices, tri_indices, _, _ = wildmeshing_lib.triangulate_data(
+                    V=tri_vertices_input,
+                    E=tri_segments_input,
+                    feature_info=None,
+                    stop_quality=MeshRenderConfig.TRIWILD_STOP_QUALITY,
+                    max_its=MeshRenderConfig.TRIWILD_MAX_ITS,
+                    stage=MeshRenderConfig.TRIWILD_STAGE,
+                    epsilon=MeshRenderConfig.TRIWILD_EPSILON,
+                    feature_epsilon=MeshRenderConfig.TRIWILD_FEATURE_EPSILON,
+                    target_edge_len=MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN,
+                    edge_length_r=MeshRenderConfig.TRIWILD_EDGE_LENGTH_R,
+                    flat_feature_angle=MeshRenderConfig.TRIWILD_FLAT_FEATURE_ANGLE,
+                    cut_outside=MeshRenderConfig.TRIWILD_CUT_OUTSIDE,
+                    skip_eps=MeshRenderConfig.TRIWILD_SKIP_EPS,
+                    hole_pts=tri_holes_input,
+                    mute_log=MeshRenderConfig.TRIWILD_MUTE_LOG,
+                )
+            except Exception:
+                continue
+
+            tri_indices = np.asarray(tri_indices, dtype=np.int64)
+            tri_vertices = np.asarray(tri_vertices, dtype=np.float64)
+            if tri_indices.ndim != 2 or tri_indices.shape[1] != 3:
+                continue
+            if tri_vertices.ndim != 2 or tri_vertices.shape[1] != 2:
+                continue
+            if len(tri_indices) == 0 or len(tri_vertices) == 0:
+                continue
+            if np.any(tri_indices < 0) or np.any(tri_indices >= len(tri_vertices)):
+                continue
+
+            for tri_index in tri_indices:
+                triangle = np.asarray(
+                    [
+                        tri_vertices[tri_index[0]],
+                        tri_vertices[tri_index[1]],
+                        tri_vertices[tri_index[2]],
+                    ],
+                    dtype=np.float64,
+                )
+                area = MeshRenderPipeline.polygon_signed_area(triangle)
+                if abs(area) <= 1e-10:
+                    continue
+                if area < 0:
+                    triangle = triangle[[0, 2, 1]]
+                triangles.append(triangle)
+
+        return triangles
+
+    @staticmethod
+    def build_kerning_table(tt_font):
+        kerning = {}
+        if "kern" not in tt_font:
+            return kerning
+        for table in tt_font["kern"].kernTables:
+            if hasattr(table, "kernTable"):
+                kerning.update(table.kernTable)
+        return kerning
+
+    @staticmethod
+    def build_text_mesh_characters(
+        text,
+        font_path,
+        text_height,
+        flatten_segment_length=MeshRenderConfig.FLATTEN_SEGMENT_LENGTH_DEFAULT,
+        progress_callback=None,
+    ):
+        tt_font = TTFont(str(font_path))
+        try:
+            glyph_set = tt_font.getGlyphSet()
+            cmap = tt_font.getBestCmap() or {}
+            metrics = tt_font["hmtx"].metrics
+            units_per_em = float(tt_font["head"].unitsPerEm)
+            kerning = MeshRenderPipeline.build_kerning_table(tt_font)
+
+            cursor_x = 0.0
+            previous_glyph = None
+            raw_characters = []
+            all_points = []
+            total_chars = len(text)
+            effective_segment_length = max(1e-3, float(flatten_segment_length))
+
+            for index, char in enumerate(text):
+                codepoint = ord(char)
+                glyph_name = cmap.get(codepoint)
+                if glyph_name is None:
+                    glyph_name = ".notdef" if ".notdef" in glyph_set else None
+
+                if glyph_name is None:
+                    advance = units_per_em * 0.5
+                    center_x = cursor_x + advance * 0.5
+                    raw_characters.append(
+                        {
+                            "char": char,
+                            "center_x": center_x,
+                            "contours": [],
+                        }
+                    )
+                    cursor_x += advance
+                    previous_glyph = None
+                    if progress_callback is not None:
+                        progress_callback(
+                            stage="glyph",
+                            current=index + 1,
+                            total=total_chars,
+                            note=char,
+                        )
+                    continue
+
+                if previous_glyph is not None:
+                    cursor_x += float(kerning.get((previous_glyph, glyph_name), 0.0))
+
+                start_x = cursor_x
+                glyph = glyph_set[glyph_name]
+                flattened_contours = MeshRenderPipeline.flatten_glyph_to_contours(
+                    glyph, glyph_set, effective_segment_length
+                )
+
+                translated_contours = []
+                for contour in flattened_contours:
+                    translated = contour.copy()
+                    translated[:, 0] += start_x
+                    translated_contours.append(translated)
+                    all_points.append(translated)
+
+                advance = float(metrics.get(glyph_name, (units_per_em, 0))[0])
+                if advance <= 0:
+                    advance = units_per_em * 0.5
+                cursor_x += advance
+
+                if translated_contours:
+                    min_x = min(contour[:, 0].min() for contour in translated_contours)
+                    max_x = max(contour[:, 0].max() for contour in translated_contours)
+                    center_x = (min_x + max_x) * 0.5
+                else:
+                    center_x = start_x + advance * 0.5
+
+                raw_characters.append(
+                    {
+                        "char": char,
+                        "center_x": center_x,
+                        "contours": translated_contours,
+                    }
+                )
+                previous_glyph = glyph_name
+                if progress_callback is not None:
+                    progress_callback(
+                        stage="glyph", current=index + 1, total=total_chars, note=char
+                    )
+
+            if not all_points:
+                return [
+                    {"char": char_data["char"], "folder_x": 0.0, "contours": []}
+                    for char_data in raw_characters
+                ]
+
+            all_points_arr = np.vstack(all_points)
+            min_x = float(np.min(all_points_arr[:, 0]))
+            max_x = float(np.max(all_points_arr[:, 0]))
+            min_y = float(np.min(all_points_arr[:, 1]))
+            max_y = float(np.max(all_points_arr[:, 1]))
+
+            glyph_height = max(1e-6, max_y - min_y)
+            scale = text_height / glyph_height
+            center_x = 0.5 * (min_x + max_x)
+            center_y = 0.5 * (min_y + max_y)
+
+            transformed_characters = []
+            for char_data in raw_characters:
+                folder_x = -(char_data["center_x"] - center_x) * scale
+                transformed_contours = []
+                for contour in char_data["contours"]:
+                    transformed = np.empty_like(contour)
+                    transformed[:, 0] = -(contour[:, 0] - center_x) * scale - folder_x
+                    transformed[:, 1] = -(contour[:, 1] - center_y) * scale
+                    transformed_contours.append(transformed)
+                transformed_characters.append(
+                    {
+                        "char": char_data["char"],
+                        "folder_x": folder_x,
+                        "contours": transformed_contours,
+                    }
+                )
+
+            return transformed_characters
+        finally:
+            tt_font.close()
+
+    @staticmethod
+    def create_sheared_triangle(
+        plane_template,
+        triangle_template,
+        target_triangle,
+        color,
+        solver,
+        child_y_scale=0.01,
+        reconstruction_max_abs_tol=MeshRenderConfig.RECONSTRUCTION_MAX_ABS_TOL,
+    ):
+        solved = solver.solve(target_triangle)
+        residual = solved.get("residual", float("inf"))
+        if not np.isfinite(residual):
+            solved["rejected_reason"] = "solve_non_finite"
+            return None, solved
+        if not solved.get("reachable", False):
+            solved["rejected_reason"] = "solve_not_converged"
+            return None, solved
+
+        reconstruction = solver.reconstruction_error(target_triangle, solved)
+        solved["reconstruction_max_abs"] = reconstruction["max_abs"]
+        solved["reconstruction_rmse"] = reconstruction["rmse"]
+        if reconstruction["max_abs"] > reconstruction_max_abs_tol:
+            solved["rejected_reason"] = "reconstruction_error"
+            return None, solved
+
+        parent = create_plane(
+            plane_template,
+            x=solved["px"],
+            y=0.0,
+            z=solved["pz"],
+            color=color,
+            scale=1.0,
+        )
+        parent["data"]["rotation"]["x"] = 0.0
+        parent["data"]["rotation"]["y"] = solved["alpha"]
+        parent["data"]["rotation"]["z"] = 0.0
+        parent["data"]["scale"]["x"] = solved["sx"]
+        parent["data"]["scale"]["y"] = 1.0
+        parent["data"]["scale"]["z"] = solved["sz"]
+        # 親平面は三角形せん断のためだけに使うので色だけ完全透過にする。
+        parent["data"]["colors"][0]["a"] = 0.0
+        parent["data"]["line_color"]["a"] = 0.0
+        parent["data"]["line_width"] = 0.0
+
+        child = copy.deepcopy(triangle_template)
+        child["data"]["position"]["x"] = 0.0
+        child["data"]["position"]["y"] = 0.0
+        child["data"]["position"]["z"] = 0.0
+        child["data"]["rotation"]["x"] = 0.0
+        child["data"]["rotation"]["y"] = solved["theta"]
+        child["data"]["rotation"]["z"] = 0.0
+        child["data"]["scale"]["x"] = solved.get("cx", solved["cs"])
+        child["data"]["scale"]["y"] = child_y_scale
+        child["data"]["scale"]["z"] = solved.get("cz", solved["cs"])
+        child_color = copy.deepcopy(color)
+        child_color["a"] = 1.0
+        child["data"]["alpha"] = 1.0
+        child["data"]["colors"][0] = child_color
+        child["data"]["line_color"]["a"] = 1.0
+        child["data"]["line_width"] = 0.0
+        child["data"]["child"] = []
+
+        parent["data"]["child"] = [child]
+        return parent, solved
+
+    @staticmethod
+    def generate_text_scene_mesh(
+        text,
+        template_scene,
+        plane_template,
+        triangle_template,
+        folder_key,
+        folder_obj,
+        grid_height=60,
+        font_size=100,
+        text_scale=0.25,
+        spacing=None,
+        color=None,
+        font_path=None,
+        flatten_segment_length=MeshRenderConfig.FLATTEN_SEGMENT_LENGTH_DEFAULT,
+        generation_metadata=None,
+        lang="ja",
+        progress_callback=None,
+    ):
+        """文字輪郭を三角形メッシュ化して3Dシーンを生成する。"""
+        if spacing is None:
+            spacing = text_scale * DotRenderConfig.SPACING_RATIO
+
+        if progress_callback is not None:
+            progress_callback(stage="prepare", current=0, total=1, note="start")
+
+        font = load_font(font_size, font_path)
+        img = text_to_image(text, font_size=font_size, font=font)
+        grid_width = compute_grid_width_from_image(img, grid_height)
+        preview_pixels = build_preview_from_image(img, grid_width, grid_height)
+
+        if font_path is None:
+            available_fonts = list_available_fonts()
+            if not available_fonts:
+                raise RuntimeError("No font file found for mesh generation")
+            mesh_font_path = available_fonts[0]
+        else:
+            mesh_font_path = font_path
+
+        missing_glyphs = MeshRenderPipeline.find_missing_glyphs(text, mesh_font_path)
+        if missing_glyphs:
+            raise MissingGlyphError(missing_glyphs[0])
+
+        mesh_height = max(1e-5, spacing * grid_height)
+        char_mesh_data = MeshRenderPipeline.build_text_mesh_characters(
+            text,
+            mesh_font_path,
+            text_height=mesh_height,
+            flatten_segment_length=flatten_segment_length,
+            progress_callback=progress_callback,
+        )
+
+        (
+            char_folders,
+            plane_count,
+            raw_plane_count,
+            mesh_stats,
+            triangle_status_records,
+        ) = MeshRenderPipeline.build_mesh_char_folders(
+            text,
+            char_mesh_data,
+            plane_template,
+            triangle_template,
+            folder_obj,
+            color,
+            progress_callback=progress_callback,
+        )
+
+        if progress_callback is not None:
+            progress_callback(stage="preview", current=1, total=1, note="")
+
+        triangulation_preview = MeshRenderPipeline.build_mesh_triangulation_preview(
+            char_mesh_data, triangle_status_records
+        )
+
+        if progress_callback is not None:
+            progress_callback(stage="scene", current=1, total=1, note="")
+
+        scene = HoneycomeSceneData()
+        scene.version = template_scene.version
+        scene.dataVersion = template_scene.dataVersion
+        scene.user_id = template_scene.user_id
+        scene.data_id = str(uuid.uuid4())
+        scene.title = f"{get_text('scene_title_prefix', lang)}{text}"
+        scene.unknown_1 = template_scene.unknown_1
+        scene.unknown_2 = template_scene.unknown_2
+        scene.unknown_tail_1 = template_scene.unknown_tail_1
+        scene.unknown_tail_2 = template_scene.unknown_tail_2
+        scene.unknown_tail_3 = template_scene.unknown_tail_3
+        scene.unknown_tail_4 = template_scene.unknown_tail_4
+        scene.unknown_tail_5 = template_scene.unknown_tail_5
+        scene.unknown_tail_6 = template_scene.unknown_tail_6
+        scene.unknown_tail_7 = template_scene.unknown_tail_7
+        scene.unknown_tail_8 = template_scene.unknown_tail_8
+        scene.unknown_tail_9 = template_scene.unknown_tail_9
+        scene.unknown_tail_10 = template_scene.unknown_tail_10
+        scene.frame_filename = template_scene.frame_filename
+        scene.unknown_tail_11 = template_scene.unknown_tail_11
+        scene.footer_marker = template_scene.footer_marker
+        scene.unknown_tail_extra = template_scene.unknown_tail_extra
+        scene.image = template_scene.image
+
+        new_folder = copy.deepcopy(folder_obj)
+        new_folder["data"]["name"] = f"{get_text('folder_title_prefix', lang)}{text}"
+        new_folder["data"]["treeState"] = 1
+
+        if generation_metadata:
+            metadata_folder = build_metadata_folder(
+                folder_obj, generation_metadata, lang
+            )
+            new_folder["data"]["child"] = [metadata_folder] + char_folders
+        else:
+            new_folder["data"]["child"] = char_folders
+
+        scene.objects = {folder_key: new_folder}
+
+        if progress_callback is not None:
+            progress_callback(stage="done", current=1, total=1, note="")
+
+        return (
+            scene,
+            img,
+            preview_pixels,
+            plane_count,
+            plane_count,
+            raw_plane_count,
+            mesh_stats,
+            triangulation_preview,
+        )
+
+    @staticmethod
+    def default_advanced_settings():
+        return {
+            "flatten_segment_length": float(
+                MeshRenderConfig.FLATTEN_SEGMENT_LENGTH_DEFAULT
+            ),
+            "stop_quality": float(MeshRenderConfig.TRIWILD_STOP_QUALITY),
+            "edge_length_r": float(MeshRenderConfig.TRIWILD_EDGE_LENGTH_R),
+            "target_edge_len_enabled": MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN > 0.0,
+            "target_edge_len": (
+                float(MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN)
+                if MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN > 0.0
+                else 0.04
+            ),
+        }
+
+    @staticmethod
+    def render_advanced_settings(lang):
+        settings = {
+            "flatten_segment_length": st.slider(
+                get_text("mesh_flatten_length_label", lang),
+                min_value=2.0,
+                max_value=100.0,
+                value=float(MeshRenderConfig.FLATTEN_SEGMENT_LENGTH_DEFAULT),
+                step=1.0,
+                help=get_text("mesh_flatten_length_help", lang),
+            ),
+            "stop_quality": st.slider(
+                get_text("mesh_stop_quality_label", lang),
+                min_value=1.0,
+                max_value=40.0,
+                value=float(MeshRenderConfig.TRIWILD_STOP_QUALITY),
+                step=1.0,
+                help=get_text("mesh_stop_quality_help", lang),
+            ),
+            "edge_length_r": st.slider(
+                get_text("mesh_edge_length_r_label", lang),
+                min_value=0.02,
+                max_value=0.20,
+                value=float(MeshRenderConfig.TRIWILD_EDGE_LENGTH_R),
+                step=0.01,
+                help=get_text("mesh_edge_length_r_help", lang),
+            ),
+            "target_edge_len_enabled": st.checkbox(
+                get_text("mesh_target_edge_len_enable", lang),
+                value=MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN > 0.0,
+            ),
+        }
+        if settings["target_edge_len_enabled"]:
+            settings["target_edge_len"] = st.slider(
+                get_text("mesh_target_edge_len_label", lang),
+                min_value=0.005,
+                max_value=0.10,
+                value=(
+                    float(MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN)
+                    if MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN > 0.0
+                    else 0.04
+                ),
+                step=0.005,
+                help=get_text("mesh_target_edge_len_help", lang),
+            )
+        else:
+            settings["target_edge_len"] = -1.0
+        return settings
+
+    @staticmethod
+    def apply_triwild_settings(*, stop_quality, edge_length_r, target_edge_len):
+        MeshRenderConfig.TRIWILD_STOP_QUALITY = float(stop_quality)
+        MeshRenderConfig.TRIWILD_EDGE_LENGTH_R = float(edge_length_r)
+        MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN = float(target_edge_len)
+
+    @staticmethod
+    def build_generation_metadata(
+        *,
+        lang,
+        selected_font,
+        color_hex,
+        color_alpha,
+        text_height,
+        plane_preset_key,
+        light_cancel,
+        flatten_segment_length,
+        stop_quality,
+        edge_length_r,
+        target_edge_len,
+    ):
+        return {
+            get_text("meta_font", lang): selected_font.name
+            if selected_font
+            else "default",
+            get_text("meta_color", lang): color_hex,
+            get_text("meta_alpha", lang): color_alpha,
+            get_text("meta_text_height", lang): text_height,
+            get_text("meta_resolution", lang): "-",
+            get_text("meta_antialias", lang): "-",
+            get_text("meta_aa_color", lang): "-",
+            get_text("meta_merge_horizontal", lang): "-",
+            get_text("meta_plane_size", lang): "-",
+            get_text("meta_plane_type", lang): plane_preset_key,
+            get_text("meta_light_influence", lang): light_cancel,
+            get_text("meta_render_mode", lang): get_text("render_mode_mesh", lang),
+            get_text("meta_mesh_flatten_length", lang): flatten_segment_length,
+            get_text("meta_mesh_stop_quality", lang): stop_quality,
+            get_text("meta_mesh_edge_length_r", lang): edge_length_r,
+            get_text("meta_mesh_target_edge_len", lang): target_edge_len,
+        }
+
+    @staticmethod
+    def build_progress_callback(lang):
+        progress_bar = st.progress(0, text=f"{get_text('generating', lang)} 0%")
+        progress_status = st.empty()
+        progress_state = {"percent": -1, "status": ""}
+        stage_labels = {
+            "prepare": get_text("mesh_stage_prepare", lang),
+            "glyph": get_text("mesh_stage_glyph", lang),
+            "triangulate": get_text("mesh_stage_triangulate", lang),
+            "solve": get_text("mesh_stage_solve", lang),
+            "preview": get_text("mesh_stage_preview", lang),
+            "scene": get_text("mesh_stage_scene", lang),
+            "done": get_text("mesh_stage_done", lang),
+        }
+
+        def mesh_progress_callback(stage, current=None, total=None, note=""):
+            if stage == "prepare":
+                percent = 5
+            elif stage == "glyph":
+                ratio = 0.0
+                if total and total > 0 and current is not None:
+                    ratio = min(1.0, max(0.0, float(current) / float(total)))
+                percent = int(round(10 + 20 * ratio))
+            elif stage == "triangulate":
+                ratio = 0.0
+                if total and total > 0 and current is not None:
+                    ratio = min(1.0, max(0.0, float(current) / float(total)))
+                percent = int(round(30 + 15 * ratio))
+            elif stage == "solve":
+                ratio = 0.0
+                if total and total > 0 and current is not None:
+                    ratio = min(1.0, max(0.0, float(current) / float(total)))
+                percent = int(round(45 + 47 * ratio))
+            elif stage == "preview":
+                percent = 94
+            elif stage == "scene":
+                percent = 98
+            elif stage == "done":
+                percent = 100
+            else:
+                percent = (
+                    progress_state["percent"] if progress_state["percent"] >= 0 else 0
+                )
+
+            percent = max(0, min(100, int(percent)))
+            stage_label = stage_labels.get(stage, stage)
+            status_text = stage_label
+            if total and total > 0 and current is not None:
+                status_text = f"{status_text} ({int(current)}/{int(total)})"
+            if note:
+                status_text = f"{status_text} [{note}]"
+
+            if percent != progress_state["percent"]:
+                progress_bar.progress(
+                    percent, text=f"{get_text('generating', lang)} {percent}%"
+                )
+                progress_state["percent"] = percent
+            if status_text != progress_state["status"]:
+                progress_status.caption(status_text)
+                progress_state["status"] = status_text
+
+        return mesh_progress_callback
+
+    @staticmethod
+    def generate_for_main(
+        *,
+        text_input,
+        template_scene,
+        plane_template,
+        triangle_template,
+        folder_key,
+        folder_obj,
+        layout,
+        font_size,
+        color,
+        selected_font,
+        flatten_segment_length,
+        stop_quality,
+        edge_length_r,
+        target_edge_len,
+        generation_metadata,
+        lang,
+    ):
+        MeshRenderPipeline.apply_triwild_settings(
+            stop_quality=stop_quality,
+            edge_length_r=edge_length_r,
+            target_edge_len=target_edge_len,
+        )
+        progress_callback = MeshRenderPipeline.build_progress_callback(lang)
+        (
+            scene,
+            original_img,
+            preview_pixels,
+            plane_count,
+            plane_count_horizontal,
+            raw_plane_count,
+            mesh_stats,
+            triangulation_preview,
+        ) = MeshRenderPipeline.generate_scene(
+            text=text_input,
+            template_scene=template_scene,
+            plane_template=plane_template,
+            triangle_template=triangle_template,
+            folder_key=folder_key,
+            folder_obj=folder_obj,
+            grid_height=layout["grid_height"],
+            font_size=font_size,
+            text_scale=layout["text_scale"],
+            spacing=layout["spacing"],
+            color=color,
+            font_path=selected_font,
+            flatten_segment_length=flatten_segment_length,
+            generation_metadata=generation_metadata,
+            lang=lang,
+            progress_callback=progress_callback,
+        )
+        return {
+            "scene": scene,
+            "original_img": original_img,
+            "preview_pixels": preview_pixels,
+            "plane_count": plane_count,
+            "plane_count_horizontal": plane_count_horizontal,
+            "raw_plane_count": raw_plane_count,
+            "mesh_stats": mesh_stats,
+            "triangulation_preview": triangulation_preview,
+        }
+
+    @staticmethod
+    def render_generation_feedback(mesh_stats, lang):
+        if not mesh_stats:
+            return
+        if mesh_stats["solve_failed_count"] > 0:
+            st.warning(
+                get_text("mesh_solver_skip_warn", lang).format(
+                    failed=mesh_stats["solve_failed_count"]
+                )
+            )
+        if mesh_stats["reconstruction_failed_count"] > 0:
+            st.warning(
+                get_text("mesh_reconstruction_skip_warn", lang).format(
+                    failed=mesh_stats["reconstruction_failed_count"]
+                )
+            )
+        st.caption(
+            get_text("mesh_reconstruction_info", lang).format(
+                max_err=mesh_stats["accepted_max_abs_error"],
+                rmse=mesh_stats["accepted_rmse"],
+                tol=mesh_stats["reconstruction_tol"],
+            )
+        )
+
+    @staticmethod
+    def render_triangulation_section(triangulation_preview, lang):
+        st.subheader(f"🔺 {get_text('mesh_triangulation_title', lang)}")
+        if triangulation_preview is None:
+            st.caption(get_text("mesh_triangulation_empty", lang))
+        else:
+            st.image(triangulation_preview, width="stretch")
+
+    build_triangulation_preview = build_mesh_triangulation_preview
+    generate_scene = generate_text_scene_mesh
+
+
+def main():
+    # メイン UI
+    try:
+        # ページ設定
+        title = get_text("title", "ja")
+        st.set_page_config(page_title=title, page_icon="✨", layout="wide")
+
+        # サイドバーに言語選択を配置
+        with st.sidebar:
+            lang = st.selectbox(
+                "Language / 言語",
+                options=["ja", "en"],
+                format_func=lambda x: "日本語" if x == "ja" else "English",
+                index=0,
+            )
+
+        st.title(f"✨ {get_text('title', lang)}")
+        st.markdown(get_text("subtitle", lang))
+
+        # セッション状態の初期化
+        if "template_scene" not in st.session_state:
+            st.session_state.template_scene = None
+            st.session_state.plane_template = None
+            st.session_state.folder_key = None
+            st.session_state.folder_obj = None
+
+        # テンプレート読み込み
+        template_scene, plane_template, folder_key, folder_obj = load_template()
+
+        if template_scene is None:
+            st.stop()
+
+        with st.expander(f"❓ {get_text('qa_title', lang)}", expanded=False):
+            st.markdown(get_text("qa_content", lang).strip())
+
+        # メインページでパラメータ設定
+        st.header(f"⚙️ {get_text('param_settings', lang)}")
+
+        # テキスト入力
+        text_input = st.text_input(
+            f"📝 {get_text('text_input', lang)}",
+            value="",
+            max_chars=50,
+            placeholder=get_text("text_placeholder", lang),
+        )
+        available_fonts = list_available_fonts()
+        selected_font = select_font_option(
+            available_fonts, "MPLUSRounded1c-Regular.ttf"
+        )
+        render_mode = st.selectbox(
+            get_text("render_mode_label", lang),
+            options=[
+                get_text("render_mode_dot", lang),
+                get_text("render_mode_mesh", lang),
+            ],
+            index=0,
+            help=get_text("render_mode_help", lang),
+        )
+        render_mode_key = (
+            "mesh" if render_mode == get_text("render_mode_mesh", lang) else "dot"
+        )
+
+        # 色設定
+        color_hex = st.color_picker(get_text("color_label", lang), value="#FFFFFF")
+        color_alpha = st.slider(
+            get_text("alpha_label", lang),
             min_value=0.0,
             max_value=1.0,
             value=1.0,
             step=0.05,
-            help=get_text("light_cancel_help", lang),
+        )
+        st.markdown("---")
+
+        # 文字の大きさ（縦幅）
+        st.subheader(f"📏 {get_text('text_size_title', lang)}")
+        st.text(get_text("text_size_help", lang))
+
+        with st.expander(get_text("text_size_example", lang), expanded=False):
+            st.markdown("![font size example](https://i.imgur.com/y04URY3.jpeg)")
+
+        text_height = st.slider(
+            get_text("height_label", lang),
+            min_value=0.01,
+            max_value=2.0,
+            value=0.5,
+            step=0.01,
         )
 
-    layout = compute_layout(
-        text_input, per_char_resolution, text_height, plane_size_factor
-    )
+        st.markdown("---")
 
-    # 生成ボタン
-    generate_button = st.button(
-        f"🚀 {get_text('generate_button', lang)}", type="primary", width="stretch"
-    )
+        # 詳細設定（エキスパンダーで折りたたみ）
+        font_size = DotRenderPipeline.Config.FONT_SIZE
+        dot_settings = DotRenderPipeline.default_advanced_settings()
+        mesh_settings = MeshRenderPipeline.default_advanced_settings()
+        with st.expander(f"🎨 {get_text('advanced_settings', lang)}", expanded=False):
+            match render_mode_key:
+                case "mesh":
+                    mesh_settings = MeshRenderPipeline.render_advanced_settings(lang)
+                case "dot":
+                    dot_settings = DotRenderPipeline.render_advanced_settings(lang)
+            plane_preset = st.selectbox(
+                get_text("plane_type_label", lang),
+                options=[get_text("plane_map", lang), get_text("plane_chara", lang)],
+                index=0,
+                help=get_text("plane_type_help", lang),
+            )
+            light_cancel = st.slider(
+                get_text("light_cancel_label", lang),
+                min_value=0.0,
+                max_value=1.0,
+                value=1.0,
+                step=0.05,
+                help=get_text("light_cancel_help", lang),
+            )
 
-    # 生成処理
-    if generate_button:
-        if not text_input:
-            st.error(get_text("error_no_text", lang))
-        else:
-            with st.spinner(get_text("generating", lang)):
+        plane_size_factor_for_layout = 1.0
+        match render_mode_key:
+            case "dot":
+                plane_size_factor_for_layout = dot_settings["plane_size_factor"]
+
+        layout = DotRenderPipeline.compute_layout(
+            text_input,
+            dot_settings["per_char_resolution"],
+            text_height,
+            plane_size_factor_for_layout,
+        )
+
+        # 生成ボタン
+        generate_button = st.button(
+            f"🚀 {get_text('generate_button', lang)}", type="primary", width="stretch"
+        )
+
+        # 生成処理
+        if generate_button:
+            if not text_input:
+                st.error(get_text("error_no_text", lang))
+            else:
                 try:
                     color = hex_to_color(color_hex)
                     color["a"] = color_alpha
-                    edge_color = hex_to_color(edge_color_hex)
                     # plane_preset は言語によって変わるので、インデックスで判定
                     plane_preset_key = (
                         "平面(マップ)"
@@ -1174,80 +2868,131 @@ try:
                         else "平面(キャラ)"
                     )
                     plane_settings = PLANE_PRESETS[plane_preset_key]
-
-                    # 再現用メタデータを構築
-                    generation_metadata = {
-                        get_text("meta_font", lang): (
-                            selected_font.name if selected_font else "default"
-                        ),
-                        get_text("meta_color", lang): color_hex,
-                        get_text("meta_alpha", lang): color_alpha,
-                        get_text("meta_text_height", lang): text_height,
-                        get_text("meta_resolution", lang): per_char_resolution,
-                        get_text("meta_antialias", lang): "ON" if antialias else "OFF",
-                        get_text("meta_aa_color", lang): edge_color_hex,
-                        get_text("meta_merge_horizontal", lang): (
-                            "ON" if merge_horizontal else "OFF"
-                        ),
-                        get_text("meta_plane_size", lang): plane_size_factor,
-                        get_text("meta_plane_type", lang): plane_preset_key,
-                        get_text("meta_light_influence", lang): light_cancel,
+                    triangle_settings = TRIANGLE_PRESETS[plane_preset_key]
+                    resolved_plane_template = {
+                        **plane_template,
+                        "data": {
+                            **plane_template["data"],
+                            "category": plane_settings["category"],
+                            "no": plane_settings["no"],
+                            "light_cancel": 1.0 - light_cancel,
+                        },
                     }
 
-                    (
-                        scene,
-                        original_img,
-                        preview_pixels,
-                        plane_count,
-                        plane_count_horizontal,
-                        raw_plane_count,
-                    ) = generate_text_scene(
-                        text=text_input,
-                        template_scene=template_scene,
-                        plane_template={
-                            **plane_template,
-                            "data": {
-                                **plane_template["data"],
-                                "category": plane_settings["category"],
-                                "no": plane_settings["no"],
-                                "light_cancel": 1.0 - light_cancel,
-                            },
-                        },
-                        folder_key=folder_key,
-                        folder_obj=folder_obj,
-                        grid_height=layout["grid_height"],
-                        font_size=font_size,
-                        text_scale=layout["text_scale"],
-                        spacing=layout["spacing"],
-                        threshold=threshold,
-                        color=color,
-                        edge_color=edge_color,
-                        antialias=antialias,
-                        font_path=selected_font,
-                        merge_horizontal=merge_horizontal,
-                        merge_color_threshold=merge_color_threshold,
-                        generation_metadata=generation_metadata,
-                        lang=lang,
-                    )
+                    match render_mode_key:
+                        case "mesh":
+                            generation_metadata = (
+                                MeshRenderPipeline.build_generation_metadata(
+                                    lang=lang,
+                                    selected_font=selected_font,
+                                    color_hex=color_hex,
+                                    color_alpha=color_alpha,
+                                    text_height=text_height,
+                                    plane_preset_key=plane_preset_key,
+                                    light_cancel=light_cancel,
+                                    flatten_segment_length=mesh_settings[
+                                        "flatten_segment_length"
+                                    ],
+                                    stop_quality=mesh_settings["stop_quality"],
+                                    edge_length_r=mesh_settings["edge_length_r"],
+                                    target_edge_len=mesh_settings["target_edge_len"],
+                                )
+                            )
+                            result = MeshRenderPipeline.generate_for_main(
+                                text_input=text_input,
+                                template_scene=template_scene,
+                                plane_template=resolved_plane_template,
+                                triangle_template={
+                                    **plane_template,
+                                    "data": {
+                                        **plane_template["data"],
+                                        "category": triangle_settings["category"],
+                                        "no": triangle_settings["no"],
+                                        "light_cancel": 1.0 - light_cancel,
+                                    },
+                                },
+                                folder_key=folder_key,
+                                folder_obj=folder_obj,
+                                layout=layout,
+                                font_size=font_size,
+                                color=color,
+                                selected_font=selected_font,
+                                flatten_segment_length=mesh_settings[
+                                    "flatten_segment_length"
+                                ],
+                                stop_quality=mesh_settings["stop_quality"],
+                                edge_length_r=mesh_settings["edge_length_r"],
+                                target_edge_len=mesh_settings["target_edge_len"],
+                                generation_metadata=generation_metadata,
+                                lang=lang,
+                            )
+                            MeshRenderPipeline.render_generation_feedback(
+                                result["mesh_stats"], lang
+                            )
+                        case "dot":
+                            generation_metadata = (
+                                DotRenderPipeline.build_generation_metadata(
+                                    lang=lang,
+                                    selected_font=selected_font,
+                                    color_hex=color_hex,
+                                    color_alpha=color_alpha,
+                                    text_height=text_height,
+                                    plane_preset_key=plane_preset_key,
+                                    light_cancel=light_cancel,
+                                    dot_settings=dot_settings,
+                                )
+                            )
+                            result = DotRenderPipeline.generate_for_main(
+                                text_input=text_input,
+                                template_scene=template_scene,
+                                plane_template=resolved_plane_template,
+                                folder_key=folder_key,
+                                folder_obj=folder_obj,
+                                layout=layout,
+                                font_size=font_size,
+                                color=color,
+                                selected_font=selected_font,
+                                dot_settings=dot_settings,
+                                generation_metadata=generation_metadata,
+                                lang=lang,
+                            )
+
+                    scene = result["scene"]
+                    original_img = result["original_img"]
+                    preview_pixels = result["preview_pixels"]
+                    plane_count = result["plane_count"]
+                    plane_count_horizontal = result["plane_count_horizontal"]
+                    raw_plane_count = result["raw_plane_count"]
+                    mesh_stats = result["mesh_stats"]
+                    triangulation_preview = result["triangulation_preview"]
 
                     st.success(
                         f"✅ {get_text('success_generate', lang).format(count=plane_count)}"
                     )
 
-                    render_preview(
-                        original_img,
-                        preview_pixels,
-                        preview_pixels.shape[1],
-                        layout["grid_height"],
-                        lang,
-                    )
+                    match render_mode_key:
+                        case "dot":
+                            render_preview(
+                                original_img,
+                                preview_pixels,
+                                preview_pixels.shape[1],
+                                layout["grid_height"],
+                                lang,
+                            )
                     render_scene_info(
                         scene,
                         plane_count,
                         plane_count_horizontal,
                         raw_plane_count,
                         lang,
+                        is_mesh_mode=render_mode_key == "mesh",
+                        mesh_stats=mesh_stats,
                     )
+                    match render_mode_key:
+                        case "mesh":
+                            MeshRenderPipeline.render_triangulation_section(
+                                triangulation_preview, lang
+                            )
 
                     # ダウンロードボタン
                     filename = build_scene_filename(text_input)
@@ -1267,11 +3012,20 @@ try:
                         width="stretch",
                     )
 
+                except MissingGlyphError as e:
+                    st.error(
+                        get_text("mesh_missing_glyph_error", lang).format(
+                            error_moji=e.error_moji
+                        )
+                    )
                 except Exception as e:
                     st.error(f"{get_text('error_occurred', lang)} {str(e)}")
                     st.exception(e)
 
+    except Exception as e:
+        st.error(f"{get_text('error_init', lang)} {str(e)}")
+        st.exception(e)
 
-except Exception as e:
-    st.error(f"{get_text('error_init', lang)} {str(e)}")
-    st.exception(e)
+
+if __name__ == "__main__":
+    main()

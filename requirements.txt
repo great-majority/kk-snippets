@@ -2,3 +2,7 @@ kkloader==0.1.20
 streamlit==1.51.0
 pyvis==0.3.2
 networkx==3.3
+scipy==1.15.3
+fonttools==4.61.1
+fontpens==0.2.4
+wildmeshing==0.4.1
