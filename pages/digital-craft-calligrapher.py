@@ -14,6 +14,11 @@ from kkloader import HoneycomeSceneData
 from PIL import Image, ImageDraw, ImageFont
 from scipy.optimize import least_squares
 
+try:
+    import pathops
+except Exception:
+    pathops = None
+
 # ========================================
 # i18n対応: 多言語辞書
 # ========================================
@@ -52,6 +57,9 @@ TRANSLATIONS = {
         "meta_mesh_stop_quality": "メッシュ stop_quality",
         "meta_mesh_edge_length_r": "メッシュ edge_length_r",
         "meta_mesh_target_edge_len": "メッシュ target_edge_len",
+        "meta_mesh_outline_enabled": "メッシュ縁取り",
+        "meta_mesh_outline_width": "メッシュ縁取り幅",
+        "meta_mesh_outline_color": "メッシュ縁取り色",
         "param_settings": "パラメータ設定",
         "text_input": "テキスト",
         "text_placeholder": "ここにテキストを入力",
@@ -90,6 +98,12 @@ TRANSLATIONS = {
         "mesh_target_edge_len_enable": "絶対辺長(target_edge_len)を使う",
         "mesh_target_edge_len_label": "絶対辺長(target_edge_len)",
         "mesh_target_edge_len_help": "有効時のみ使用。小さいほど三角形が増えます。",
+        "mesh_outline_enable_label": "縁取りを有効化",
+        "mesh_outline_enable_help": "ONにすると、文字の背面に縁取りメッシュを追加します。",
+        "mesh_outline_width_label": "縁取り幅",
+        "mesh_outline_width_help": "0で無効。値を大きくすると文字の外側に縁取りメッシュを追加します。",
+        "mesh_outline_color_label": "縁取り色",
+        "mesh_outline_folder_name": "縁取り",
         "mesh_solver_skip_warn": "三角形 {failed} 個はせん断解の収束に失敗したためスキップしました。",
         "mesh_reconstruction_skip_warn": "三角形 {failed} 個は再構成誤差が閾値超過のためスキップしました。",
         "mesh_reconstruction_info": "再構成誤差 (採用三角形): max={max_err:.3e}, rmse={rmse:.3e}, 閾値={tol:.3e}",
@@ -101,6 +115,8 @@ TRANSLATIONS = {
         "mesh_stage_glyph": "フォント輪郭を抽出中",
         "mesh_stage_triangulate": "輪郭を三角形分割中",
         "mesh_stage_solve": "三角形せん断を計算中",
+        "mesh_stage_outline_triangulate": "縁取り輪郭を三角形分割中",
+        "mesh_stage_outline_solve": "縁取り三角形せん断を計算中",
         "mesh_stage_preview": "分割プレビューを描画中",
         "mesh_stage_scene": "シーンを組み立て中",
         "mesh_stage_done": "完了",
@@ -160,6 +176,9 @@ The parameters are saved inside the **"Text Info"** folder in the generated scen
         "meta_mesh_stop_quality": "Mesh stop_quality",
         "meta_mesh_edge_length_r": "Mesh edge_length_r",
         "meta_mesh_target_edge_len": "Mesh target_edge_len",
+        "meta_mesh_outline_enabled": "Mesh outline",
+        "meta_mesh_outline_width": "Mesh outline width",
+        "meta_mesh_outline_color": "Mesh outline color",
         "param_settings": "Parameter Settings",
         "text_input": "Text",
         "text_placeholder": "Enter text here",
@@ -198,6 +217,12 @@ The parameters are saved inside the **"Text Info"** folder in the generated scen
         "mesh_target_edge_len_enable": "Use absolute edge length (target_edge_len)",
         "mesh_target_edge_len_label": "Absolute edge length (target_edge_len)",
         "mesh_target_edge_len_help": "Used only when enabled. Smaller values increase triangle count.",
+        "mesh_outline_enable_label": "Enable outline",
+        "mesh_outline_enable_help": "Adds an outline mesh behind the glyphs.",
+        "mesh_outline_width_label": "Outline width",
+        "mesh_outline_width_help": "Set to 0 to disable. Larger values add a thicker outline mesh behind glyphs.",
+        "mesh_outline_color_label": "Outline color",
+        "mesh_outline_folder_name": "Outline",
         "mesh_solver_skip_warn": "Skipped {failed} triangles because the shear solve did not converge.",
         "mesh_reconstruction_skip_warn": "Skipped {failed} triangles because reconstruction error exceeded the threshold.",
         "mesh_reconstruction_info": "Reconstruction error (accepted triangles): max={max_err:.3e}, rmse={rmse:.3e}, threshold={tol:.3e}",
@@ -209,6 +234,8 @@ The parameters are saved inside the **"Text Info"** folder in the generated scen
         "mesh_stage_glyph": "Extracting glyph outlines",
         "mesh_stage_triangulate": "Triangulating contours",
         "mesh_stage_solve": "Solving triangle shears",
+        "mesh_stage_outline_triangulate": "Triangulating outline contours",
+        "mesh_stage_outline_solve": "Solving outline triangle shears",
         "mesh_stage_preview": "Rendering triangulation preview",
         "mesh_stage_scene": "Building scene",
         "mesh_stage_done": "Done",
@@ -264,6 +291,9 @@ class MeshRenderConfig:
     SOLVER_MAX_NFEV = 120
     SOLVER_REFERENCE_TEXT_HEIGHT = 1.0
     FLATTEN_SEGMENT_LENGTH_DEFAULT = 20.0
+    OUTLINE_WIDTH_DEFAULT = 0.0
+    OUTLINE_COLOR_HEX_DEFAULT = "#000000"
+    OUTLINE_Y_OFFSET_DEFAULT = -0.001
     # wildmeshing の分割設定。triwild.ipynb の使用例に合わせる。
     TRIWILD_STOP_QUALITY = 20.0
     TRIWILD_MAX_ITS = 80
@@ -1583,6 +1613,9 @@ class MeshRenderPipeline:
         folder_obj,
         color,
         reconstruction_max_abs_tol=MeshRenderConfig.RECONSTRUCTION_MAX_ABS_TOL,
+        y_offset=0.0,
+        triangulate_stage="triangulate",
+        solve_stage="solve",
         progress_callback=None,
     ):
         """文字輪郭を wildmeshing で三角形分割し、親平面+子三角形で表現する。"""
@@ -1607,7 +1640,7 @@ class MeshRenderPipeline:
 
             if progress_callback is not None:
                 progress_callback(
-                    stage="triangulate",
+                    stage=triangulate_stage,
                     current=index + 1,
                     total=char_count,
                     note=f"{char} ({len(triangles)})",
@@ -1632,7 +1665,7 @@ class MeshRenderPipeline:
                     or (processed_triangles % solve_progress_step) == 0
                 ):
                     progress_callback(
-                        stage="solve",
+                        stage=solve_stage,
                         current=processed_triangles,
                         total=total_triangles,
                         note=f"{char}",
@@ -1644,6 +1677,7 @@ class MeshRenderPipeline:
                     triangle,
                     color,
                     solver,
+                    y_offset=y_offset,
                     reconstruction_max_abs_tol=reconstruction_max_abs_tol,
                 )
                 shifted_triangle = triangle.copy()
@@ -2330,6 +2364,240 @@ class MeshRenderPipeline:
         }
 
     @staticmethod
+    def contours_to_pathops_path(contours):
+        if pathops is None:
+            return None
+        path = pathops.Path()
+        has_contour = False
+        for contour in contours:
+            normalized = MeshRenderPipeline.dedupe_contour_points(
+                np.asarray(contour, dtype=np.float64)
+            )
+            if (
+                len(normalized) < 3
+                or abs(MeshRenderPipeline.polygon_signed_area(normalized)) <= 1e-9
+            ):
+                continue
+            first_point = normalized[0]
+            path.moveTo(float(first_point[0]), float(first_point[1]))
+            for point in normalized[1:]:
+                path.lineTo(float(point[0]), float(point[1]))
+            path.close()
+            has_contour = True
+        return path if has_contour else None
+
+    @staticmethod
+    def pathops_path_to_contours(path):
+        if path is None:
+            return []
+        converted = []
+        for contour in path.contours:
+            points = np.asarray(list(contour.points), dtype=np.float64)
+            normalized = MeshRenderPipeline.dedupe_contour_points(points)
+            if (
+                len(normalized) >= 3
+                and abs(MeshRenderPipeline.polygon_signed_area(normalized)) > 1e-9
+            ):
+                converted.append(normalized)
+        return converted
+
+    @staticmethod
+    def build_outline_contours_with_pathops(contours, outline_width):
+        """pathops の stroke + difference で縁取りリングを生成する。"""
+        if pathops is None:
+            return None
+        fill_path = MeshRenderPipeline.contours_to_pathops_path(contours)
+        if fill_path is None:
+            return None
+        try:
+            fill_path.simplify()
+            stroked_path = pathops.Path()
+            stroked_path.addPath(fill_path)
+            stroked_path.stroke(
+                width=float(2.0 * outline_width),
+                cap=pathops.LineCap.BUTT_CAP,
+                join=pathops.LineJoin.MITER_JOIN,
+                miter_limit=4.0,
+            )
+            ring_path = pathops.op(stroked_path, fill_path, pathops.PathOp.DIFFERENCE)
+            ring_path.simplify()
+            return MeshRenderPipeline.pathops_path_to_contours(ring_path)
+        except Exception:
+            return None
+
+    @staticmethod
+    def offset_contour_polygon(contour, offset_distance, miter_limit=4.0):
+        """単一輪郭を辺法線ベースでオフセットする。"""
+        points = MeshRenderPipeline.dedupe_contour_points(
+            np.asarray(contour, dtype=np.float64)
+        )
+        if len(points) < 3:
+            return None
+
+        area = MeshRenderPipeline.polygon_signed_area(points)
+        if abs(area) <= 1e-9:
+            return None
+
+        point_count = len(points)
+        edge_dirs = []
+        outward_normals = []
+        for index in range(point_count):
+            p0 = points[index]
+            p1 = points[(index + 1) % point_count]
+            edge = p1 - p0
+            edge_norm = np.linalg.norm(edge)
+            if edge_norm <= 1e-12:
+                return None
+            edge_dir = edge / edge_norm
+            left_normal = np.array([-edge_dir[1], edge_dir[0]], dtype=np.float64)
+            # 多角形の面積符号により、外向き法線を決める。
+            outward = -left_normal if area > 0 else left_normal
+            edge_dirs.append(edge_dir)
+            outward_normals.append(outward)
+
+        orientation = 1.0 if area > 0 else -1.0
+        max_miter = max(1.0, float(miter_limit)) * abs(float(offset_distance))
+        result_points = []
+
+        for index in range(point_count):
+            vertex = points[index]
+            dir_prev = edge_dirs[index - 1]
+            dir_next = edge_dirs[index]
+            normal_prev = outward_normals[index - 1]
+            normal_next = outward_normals[index]
+
+            cross = dir_prev[0] * dir_next[1] - dir_prev[1] * dir_next[0]
+            is_concave = orientation * cross < -1e-9
+            shifted_prev = vertex + normal_prev * offset_distance
+            shifted_next = vertex + normal_next * offset_distance
+
+            if is_concave:
+                # 凹角はベベルで自己交差を避ける。
+                result_points.append(shifted_prev)
+                result_points.append(shifted_next)
+                continue
+
+            denom = dir_prev[0] * dir_next[1] - dir_prev[1] * dir_next[0]
+            if abs(denom) <= 1e-9:
+                candidate = vertex + (normal_prev + normal_next) * 0.5 * offset_distance
+            else:
+                delta = shifted_next - shifted_prev
+                t = (delta[0] * dir_next[1] - delta[1] * dir_next[0]) / denom
+                candidate = shifted_prev + dir_prev * t
+
+            miter_vec = candidate - vertex
+            miter_len = float(np.linalg.norm(miter_vec))
+            if miter_len > max_miter and miter_len > 1e-12:
+                candidate = vertex + (miter_vec / miter_len) * max_miter
+            result_points.append(candidate)
+
+        offset_contour = MeshRenderPipeline.dedupe_contour_points(
+            np.asarray(result_points, dtype=np.float64)
+        )
+        if len(offset_contour) < 3:
+            return None
+        if abs(MeshRenderPipeline.polygon_signed_area(offset_contour)) <= 1e-9:
+            return None
+        return offset_contour
+
+    @staticmethod
+    def build_outline_char_mesh_data(char_mesh_data, outline_width):
+        """輪郭オフセットで縁取り用の差分リング輪郭を作る。"""
+        expanded_characters = []
+        effective_width = max(0.0, float(outline_width))
+
+        for char_data in char_mesh_data:
+            contours = [
+                np.asarray(contour, dtype=np.float64).copy()
+                for contour in char_data.get("contours", [])
+            ]
+            if effective_width <= 0.0 or not contours:
+                expanded_characters.append(
+                    {
+                        "char": char_data["char"],
+                        "folder_x": float(char_data.get("folder_x", 0.0)),
+                        "contours": contours,
+                    }
+                )
+                continue
+
+            pathops_contours = MeshRenderPipeline.build_outline_contours_with_pathops(
+                contours, effective_width
+            )
+            if pathops_contours:
+                expanded_characters.append(
+                    {
+                        "char": char_data["char"],
+                        "folder_x": float(char_data.get("folder_x", 0.0)),
+                        "contours": pathops_contours,
+                    }
+                )
+                continue
+
+            valid_contours = []
+            valid_original_indices = []
+            for contour_index, contour in enumerate(contours):
+                normalized = MeshRenderPipeline.dedupe_contour_points(contour)
+                if (
+                    len(normalized) >= 3
+                    and abs(MeshRenderPipeline.polygon_signed_area(normalized)) > 1e-9
+                ):
+                    valid_contours.append(normalized)
+                    valid_original_indices.append(contour_index)
+
+            depth_map = {}
+            if valid_contours:
+                _, depths = MeshRenderPipeline.build_contour_hierarchy(valid_contours)
+                for local_index, original_index in enumerate(valid_original_indices):
+                    depth_map[original_index] = depths[local_index]
+
+            expanded_contours = []
+            for contour_index, contour in enumerate(contours):
+                normalized_contour = MeshRenderPipeline.dedupe_contour_points(contour)
+                if (
+                    len(normalized_contour) < 3
+                    or abs(MeshRenderPipeline.polygon_signed_area(normalized_contour))
+                    <= 1e-9
+                ):
+                    continue
+
+                depth = depth_map.get(contour_index, 0)
+                # 偶数深度(外周)は外向き、奇数深度(穴)は内向きへオフセットする。
+                offset_distance = (
+                    effective_width if depth % 2 == 0 else -effective_width
+                )
+                normalized_offset = MeshRenderPipeline.offset_contour_polygon(
+                    normalized_contour, offset_distance
+                )
+                if normalized_offset is None:
+                    continue
+
+                # 縁取りは「拡張形状そのもの」ではなく、元輪郭との差分リングとして作る。
+                if depth % 2 == 0:
+                    outer_ring = normalized_offset
+                    inner_ring = normalized_contour
+                else:
+                    outer_ring = normalized_contour
+                    inner_ring = normalized_offset
+
+                probe = np.mean(inner_ring, axis=0)
+                if not MeshRenderPipeline.point_in_polygon(probe, outer_ring):
+                    continue
+
+                expanded_contours.append(outer_ring)
+                expanded_contours.append(inner_ring)
+
+            expanded_characters.append(
+                {
+                    "char": char_data["char"],
+                    "folder_x": float(char_data.get("folder_x", 0.0)),
+                    "contours": expanded_contours,
+                }
+            )
+
+        return expanded_characters
+
+    @staticmethod
     def scale_triangle_object_output(triangle_parent, scale_factor):
         """solve後の親子三角形オブジェクトをXZ方向にスケールする。"""
         if abs(scale_factor - 1.0) <= 1e-12:
@@ -2353,10 +2621,13 @@ class MeshRenderPipeline:
         triangle_status_records,
         target_centers_x,
         target_height,
+        scale_factor_override=None,
     ):
         """solve後のメッシュをDot基準の高さと文字中心へ合わせる。"""
         source_height = MeshRenderPipeline.compute_char_mesh_height(char_mesh_data)
-        if source_height > 1e-9 and target_height > 1e-9:
+        if scale_factor_override is not None:
+            scale_factor = float(scale_factor_override)
+        elif source_height > 1e-9 and target_height > 1e-9:
             scale_factor = target_height / source_height
         else:
             scale_factor = 1.0
@@ -2415,6 +2686,7 @@ class MeshRenderPipeline:
         color,
         solver,
         child_y_scale=0.01,
+        y_offset=0.0,
         reconstruction_max_abs_tol=MeshRenderConfig.RECONSTRUCTION_MAX_ABS_TOL,
     ):
         solved = solver.solve(target_triangle)
@@ -2436,7 +2708,7 @@ class MeshRenderPipeline:
         parent = create_plane(
             plane_template,
             x=solved["px"],
-            y=0.0,
+            y=y_offset,
             z=solved["pz"],
             color=color,
             scale=1.0,
@@ -2488,6 +2760,9 @@ class MeshRenderPipeline:
         color=None,
         font_path=None,
         flatten_segment_length=MeshRenderConfig.FLATTEN_SEGMENT_LENGTH_DEFAULT,
+        outline_width=MeshRenderConfig.OUTLINE_WIDTH_DEFAULT,
+        outline_color=None,
+        outline_y_offset=MeshRenderConfig.OUTLINE_Y_OFFSET_DEFAULT,
         generation_metadata=None,
         lang="ja",
         progress_callback=None,
@@ -2536,6 +2811,13 @@ class MeshRenderPipeline:
             flatten_segment_length=flatten_segment_length,
             progress_callback=progress_callback,
         )
+        source_mesh_height = MeshRenderPipeline.compute_char_mesh_height(char_mesh_data)
+        if source_mesh_height > 1e-9 and dot_alignment_targets["target_height"] > 1e-9:
+            alignment_scale_factor = (
+                dot_alignment_targets["target_height"] / source_mesh_height
+            )
+        else:
+            alignment_scale_factor = 1.0
 
         (
             char_folders,
@@ -2552,18 +2834,106 @@ class MeshRenderPipeline:
             color,
             progress_callback=progress_callback,
         )
+        outline_effective_width = max(0.0, float(outline_width))
+        outline_plane_count = 0
+        outline_raw_plane_count = 0
+        outline_mesh_stats = {
+            "solve_failed_count": 0,
+            "reconstruction_failed_count": 0,
+            "reconstruction_tol": MeshRenderConfig.RECONSTRUCTION_MAX_ABS_TOL,
+            "accepted_max_abs_error": 0.0,
+            "accepted_rmse": 0.0,
+        }
+        if outline_color is None:
+            outline_color = hex_to_color(MeshRenderConfig.OUTLINE_COLOR_HEX_DEFAULT)
+        outline_color["a"] = 1.0
+        if outline_effective_width > 0.0:
+            if alignment_scale_factor > 1e-9:
+                outline_reference_width = (
+                    outline_effective_width / alignment_scale_factor
+                )
+            else:
+                outline_reference_width = outline_effective_width
+            outline_char_mesh_data = MeshRenderPipeline.build_outline_char_mesh_data(
+                char_mesh_data, outline_reference_width
+            )
+            (
+                outline_char_folders,
+                outline_plane_count,
+                outline_raw_plane_count,
+                outline_mesh_stats,
+                _,
+            ) = MeshRenderPipeline.build_mesh_char_folders(
+                text,
+                outline_char_mesh_data,
+                plane_template,
+                triangle_template,
+                folder_obj,
+                outline_color,
+                y_offset=outline_y_offset,
+                triangulate_stage="triangulate_outline",
+                solve_stage="solve_outline",
+                progress_callback=progress_callback,
+            )
+        else:
+            outline_char_mesh_data = []
+            outline_char_folders = []
+        outline_group_folder = None
+
         alignment_info = MeshRenderPipeline.align_mesh_output_to_dot(
             char_mesh_data,
             char_folders,
             triangle_status_records,
             dot_alignment_targets["target_centers_x"],
             dot_alignment_targets["target_height"],
+            scale_factor_override=alignment_scale_factor,
         )
+        if outline_char_mesh_data:
+            MeshRenderPipeline.align_mesh_output_to_dot(
+                outline_char_mesh_data,
+                outline_char_folders,
+                [],
+                dot_alignment_targets["target_centers_x"],
+                dot_alignment_targets["target_height"],
+                scale_factor_override=alignment_info["scale_factor"],
+            )
+            if outline_char_folders and outline_plane_count > 0:
+                outline_group_folder = copy.deepcopy(folder_obj)
+                outline_group_folder["data"]["name"] = get_text(
+                    "mesh_outline_folder_name", lang
+                )
+                outline_group_folder["data"]["treeState"] = 1
+                outline_group_folder["data"]["child"] = outline_char_folders
+
+        accepted_main = plane_count
+        accepted_outline = outline_plane_count
+        total_accepted = accepted_main + accepted_outline
+        weighted_rmse = 0.0
+        if total_accepted > 0:
+            weighted_rmse = (
+                mesh_stats["accepted_rmse"] * accepted_main
+                + outline_mesh_stats["accepted_rmse"] * accepted_outline
+            ) / total_accepted
+        mesh_stats = {
+            "solve_failed_count": mesh_stats["solve_failed_count"]
+            + outline_mesh_stats["solve_failed_count"],
+            "reconstruction_failed_count": mesh_stats["reconstruction_failed_count"]
+            + outline_mesh_stats["reconstruction_failed_count"],
+            "reconstruction_tol": mesh_stats["reconstruction_tol"],
+            "accepted_max_abs_error": max(
+                mesh_stats["accepted_max_abs_error"],
+                outline_mesh_stats["accepted_max_abs_error"],
+            ),
+            "accepted_rmse": float(weighted_rmse),
+        }
+        plane_count += outline_plane_count
+        raw_plane_count += outline_raw_plane_count
         mesh_stats["dot_align_scale_factor"] = alignment_info["scale_factor"]
         mesh_stats["dot_align_source_height"] = alignment_info["source_height"]
         mesh_stats["dot_align_target_height"] = alignment_info["target_height"]
         mesh_stats["solve_mesh_height"] = solve_mesh_height
         mesh_stats["requested_mesh_height"] = mesh_height
+        mesh_stats["outline_width"] = outline_effective_width
 
         if progress_callback is not None:
             progress_callback(stage="preview", current=1, total=1, note="")
@@ -2602,14 +2972,17 @@ class MeshRenderPipeline:
         new_folder = copy.deepcopy(folder_obj)
         new_folder["data"]["name"] = f"{get_text('folder_title_prefix', lang)}{text}"
         new_folder["data"]["treeState"] = 1
+        scene_children = list(char_folders)
+        if outline_group_folder is not None:
+            scene_children.append(outline_group_folder)
 
         if generation_metadata:
             metadata_folder = build_metadata_folder(
                 folder_obj, generation_metadata, lang
             )
-            new_folder["data"]["child"] = [metadata_folder] + char_folders
+            new_folder["data"]["child"] = [metadata_folder] + scene_children
         else:
-            new_folder["data"]["child"] = char_folders
+            new_folder["data"]["child"] = scene_children
 
         scene.objects = {folder_key: new_folder}
 
@@ -2633,6 +3006,9 @@ class MeshRenderPipeline:
             "flatten_segment_length": float(
                 MeshRenderConfig.FLATTEN_SEGMENT_LENGTH_DEFAULT
             ),
+            "outline_enabled": False,
+            "outline_width": float(MeshRenderConfig.OUTLINE_WIDTH_DEFAULT),
+            "outline_color_hex": MeshRenderConfig.OUTLINE_COLOR_HEX_DEFAULT,
             "stop_quality": float(MeshRenderConfig.TRIWILD_STOP_QUALITY),
             "edge_length_r": float(MeshRenderConfig.TRIWILD_EDGE_LENGTH_R),
             "target_edge_len_enabled": MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN > 0.0,
@@ -2645,36 +3021,57 @@ class MeshRenderPipeline:
 
     @staticmethod
     def render_advanced_settings(lang):
-        settings = {
-            "flatten_segment_length": st.slider(
-                get_text("mesh_flatten_length_label", lang),
-                min_value=2.0,
-                max_value=100.0,
-                value=float(MeshRenderConfig.FLATTEN_SEGMENT_LENGTH_DEFAULT),
-                step=1.0,
-                help=get_text("mesh_flatten_length_help", lang),
-            ),
-            "stop_quality": st.slider(
-                get_text("mesh_stop_quality_label", lang),
-                min_value=1.0,
-                max_value=40.0,
-                value=float(MeshRenderConfig.TRIWILD_STOP_QUALITY),
-                step=1.0,
-                help=get_text("mesh_stop_quality_help", lang),
-            ),
-            "edge_length_r": st.slider(
-                get_text("mesh_edge_length_r_label", lang),
-                min_value=0.02,
-                max_value=0.20,
-                value=float(MeshRenderConfig.TRIWILD_EDGE_LENGTH_R),
-                step=0.01,
-                help=get_text("mesh_edge_length_r_help", lang),
-            ),
-            "target_edge_len_enabled": st.checkbox(
-                get_text("mesh_target_edge_len_enable", lang),
-                value=MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN > 0.0,
-            ),
-        }
+        settings = {}
+        settings["flatten_segment_length"] = st.slider(
+            get_text("mesh_flatten_length_label", lang),
+            min_value=2.0,
+            max_value=100.0,
+            value=float(MeshRenderConfig.FLATTEN_SEGMENT_LENGTH_DEFAULT),
+            step=1.0,
+            help=get_text("mesh_flatten_length_help", lang),
+        )
+        settings["outline_enabled"] = st.checkbox(
+            get_text("mesh_outline_enable_label", lang),
+            value=False,
+            help=get_text("mesh_outline_enable_help", lang),
+        )
+        if settings["outline_enabled"]:
+            settings["outline_width"] = st.slider(
+                get_text("mesh_outline_width_label", lang),
+                min_value=0.0,
+                max_value=0.015,
+                value=float(MeshRenderConfig.OUTLINE_WIDTH_DEFAULT),
+                step=0.001,
+                format="%.3f",
+                help=get_text("mesh_outline_width_help", lang),
+            )
+            settings["outline_color_hex"] = st.color_picker(
+                get_text("mesh_outline_color_label", lang),
+                value=MeshRenderConfig.OUTLINE_COLOR_HEX_DEFAULT,
+            )
+        else:
+            settings["outline_width"] = 0.0
+            settings["outline_color_hex"] = MeshRenderConfig.OUTLINE_COLOR_HEX_DEFAULT
+        settings["stop_quality"] = st.slider(
+            get_text("mesh_stop_quality_label", lang),
+            min_value=1.0,
+            max_value=40.0,
+            value=float(MeshRenderConfig.TRIWILD_STOP_QUALITY),
+            step=1.0,
+            help=get_text("mesh_stop_quality_help", lang),
+        )
+        settings["edge_length_r"] = st.slider(
+            get_text("mesh_edge_length_r_label", lang),
+            min_value=0.02,
+            max_value=0.20,
+            value=float(MeshRenderConfig.TRIWILD_EDGE_LENGTH_R),
+            step=0.01,
+            help=get_text("mesh_edge_length_r_help", lang),
+        )
+        settings["target_edge_len_enabled"] = st.checkbox(
+            get_text("mesh_target_edge_len_enable", lang),
+            value=MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN > 0.0,
+        )
         if settings["target_edge_len_enabled"]:
             settings["target_edge_len"] = st.slider(
                 get_text("mesh_target_edge_len_label", lang),
@@ -2712,6 +3109,9 @@ class MeshRenderPipeline:
         stop_quality,
         edge_length_r,
         target_edge_len,
+        outline_enabled,
+        outline_width,
+        outline_color_hex,
     ):
         return {
             get_text("meta_font", lang): selected_font.name
@@ -2732,6 +3132,11 @@ class MeshRenderPipeline:
             get_text("meta_mesh_stop_quality", lang): stop_quality,
             get_text("meta_mesh_edge_length_r", lang): edge_length_r,
             get_text("meta_mesh_target_edge_len", lang): target_edge_len,
+            get_text("meta_mesh_outline_enabled", lang): (
+                "ON" if outline_enabled else "OFF"
+            ),
+            get_text("meta_mesh_outline_width", lang): outline_width,
+            get_text("meta_mesh_outline_color", lang): outline_color_hex,
         }
 
     @staticmethod
@@ -2744,6 +3149,8 @@ class MeshRenderPipeline:
             "glyph": get_text("mesh_stage_glyph", lang),
             "triangulate": get_text("mesh_stage_triangulate", lang),
             "solve": get_text("mesh_stage_solve", lang),
+            "triangulate_outline": get_text("mesh_stage_outline_triangulate", lang),
+            "solve_outline": get_text("mesh_stage_outline_solve", lang),
             "preview": get_text("mesh_stage_preview", lang),
             "scene": get_text("mesh_stage_scene", lang),
             "done": get_text("mesh_stage_done", lang),
@@ -2761,14 +3168,24 @@ class MeshRenderPipeline:
                 ratio = 0.0
                 if total and total > 0 and current is not None:
                     ratio = min(1.0, max(0.0, float(current) / float(total)))
-                percent = int(round(30 + 15 * ratio))
+                percent = int(round(30 + 12 * ratio))
             elif stage == "solve":
                 ratio = 0.0
                 if total and total > 0 and current is not None:
                     ratio = min(1.0, max(0.0, float(current) / float(total)))
-                percent = int(round(45 + 47 * ratio))
+                percent = int(round(42 + 36 * ratio))
+            elif stage == "triangulate_outline":
+                ratio = 0.0
+                if total and total > 0 and current is not None:
+                    ratio = min(1.0, max(0.0, float(current) / float(total)))
+                percent = int(round(78 + 8 * ratio))
+            elif stage == "solve_outline":
+                ratio = 0.0
+                if total and total > 0 and current is not None:
+                    ratio = min(1.0, max(0.0, float(current) / float(total)))
+                percent = int(round(86 + 8 * ratio))
             elif stage == "preview":
-                percent = 94
+                percent = 96
             elif stage == "scene":
                 percent = 98
             elif stage == "done":
@@ -2779,6 +3196,8 @@ class MeshRenderPipeline:
                 )
 
             percent = max(0, min(100, int(percent)))
+            if progress_state["percent"] >= 0:
+                percent = max(progress_state["percent"], percent)
             stage_label = stage_labels.get(stage, stage)
             status_text = stage_label
             if total and total > 0 and current is not None:
@@ -2814,6 +3233,8 @@ class MeshRenderPipeline:
         stop_quality,
         edge_length_r,
         target_edge_len,
+        outline_width,
+        outline_color_hex,
         generation_metadata,
         lang,
     ):
@@ -2823,6 +3244,7 @@ class MeshRenderPipeline:
             target_edge_len=target_edge_len,
         )
         progress_callback = MeshRenderPipeline.build_progress_callback(lang)
+        outline_color = hex_to_color(outline_color_hex)
         (
             scene,
             original_img,
@@ -2846,6 +3268,8 @@ class MeshRenderPipeline:
             color=color,
             font_path=selected_font,
             flatten_segment_length=flatten_segment_length,
+            outline_width=outline_width,
+            outline_color=outline_color,
             generation_metadata=generation_metadata,
             lang=lang,
             progress_callback=progress_callback,
@@ -3072,6 +3496,11 @@ def main():
                                     stop_quality=mesh_settings["stop_quality"],
                                     edge_length_r=mesh_settings["edge_length_r"],
                                     target_edge_len=mesh_settings["target_edge_len"],
+                                    outline_enabled=mesh_settings["outline_enabled"],
+                                    outline_width=mesh_settings["outline_width"],
+                                    outline_color_hex=mesh_settings[
+                                        "outline_color_hex"
+                                    ],
                                 )
                             )
                             result = MeshRenderPipeline.generate_for_main(
@@ -3099,6 +3528,8 @@ def main():
                                 stop_quality=mesh_settings["stop_quality"],
                                 edge_length_r=mesh_settings["edge_length_r"],
                                 target_edge_len=mesh_settings["target_edge_len"],
+                                outline_width=mesh_settings["outline_width"],
+                                outline_color_hex=mesh_settings["outline_color_hex"],
                                 generation_metadata=generation_metadata,
                                 lang=lang,
                             )
