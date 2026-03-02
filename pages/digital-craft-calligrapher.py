@@ -262,6 +262,7 @@ class MeshRenderConfig:
     SOLVER_REACHABLE_RESIDUAL_TOL = 1e-5
     SOLVER_EARLY_BREAK_RESIDUAL_TOL = 1e-12
     SOLVER_MAX_NFEV = 120
+    SOLVER_REFERENCE_TEXT_HEIGHT = 1.0
     FLATTEN_SEGMENT_LENGTH_DEFAULT = 20.0
     # wildmeshing の分割設定。triwild.ipynb の使用例に合わせる。
     TRIWILD_STOP_QUALITY = 20.0
@@ -1657,6 +1658,8 @@ class MeshRenderPipeline:
                             {
                                 "triangle": shifted_triangle,
                                 "status": "reconstruction_failed",
+                                "char_index": index,
+                                "folder_x": folder_x,
                             }
                         )
                     else:
@@ -1665,6 +1668,8 @@ class MeshRenderPipeline:
                             {
                                 "triangle": shifted_triangle,
                                 "status": "solve_failed",
+                                "char_index": index,
+                                "folder_x": folder_x,
                             }
                         )
                     continue
@@ -1673,7 +1678,12 @@ class MeshRenderPipeline:
                 )
                 accepted_rmse_errors.append(solved.get("reconstruction_rmse", 0.0))
                 triangle_status_records.append(
-                    {"triangle": shifted_triangle, "status": "accepted"}
+                    {
+                        "triangle": shifted_triangle,
+                        "status": "accepted",
+                        "char_index": index,
+                        "folder_x": folder_x,
+                    }
                 )
                 triangle_objects.append(triangle_object)
 
@@ -2256,6 +2266,148 @@ class MeshRenderPipeline:
             tt_font.close()
 
     @staticmethod
+    def compute_char_mesh_height(char_mesh_data):
+        """文字輪郭データ全体のY範囲高さを返す。"""
+        min_y = float("inf")
+        max_y = float("-inf")
+        for char_data in char_mesh_data:
+            for contour in char_data.get("contours", []):
+                if contour.size == 0:
+                    continue
+                min_y = min(min_y, float(np.min(contour[:, 1])))
+                max_y = max(max_y, float(np.max(contour[:, 1])))
+        if not (np.isfinite(min_y) and np.isfinite(max_y)):
+            return 0.0
+        return max(0.0, max_y - min_y)
+
+    @staticmethod
+    def build_dot_alignment_targets(
+        text, font, font_size, img_width, grid_width, grid_height, spacing
+    ):
+        """Dot配置に合わせるための中心X列と目標高さを計算する。"""
+        desired_centers = DotRenderPipeline.compute_text_center_ratios(
+            text, font, img_width
+        )
+        global_start_x = -((grid_width - 1) * spacing) / 2
+        target_centers_x = [
+            global_start_x + (grid_width - 1) * spacing * (1.0 - ratio)
+            for ratio in desired_centers
+        ]
+
+        canvas_width, canvas_height = DotRenderPipeline.compute_canvas_size(
+            text, font, DotRenderConfig.CHAR_CANVAS_PADDING
+        )
+        char_pixels_list, _, _ = DotRenderPipeline.build_char_pixels(
+            text,
+            font,
+            font_size,
+            grid_height if grid_height > 0 else 1,
+            canvas_width,
+            canvas_height,
+            effective_threshold=128,
+        )
+
+        dot_min_z = float("inf")
+        dot_max_z = float("-inf")
+        global_start_z = -((grid_height - 1) * spacing) / 2
+        for char_pixels in char_pixels_list:
+            rows = np.where(char_pixels >= 128)[0]
+            if rows.size == 0:
+                continue
+            row_min = float(np.min(rows))
+            row_max = float(np.max(rows))
+            dot_min_z = min(dot_min_z, global_start_z + row_min * spacing)
+            dot_max_z = max(dot_max_z, global_start_z + row_max * spacing)
+
+        if not (np.isfinite(dot_min_z) and np.isfinite(dot_max_z)):
+            target_height = 0.0
+        else:
+            target_height = max(0.0, dot_max_z - dot_min_z)
+
+        return {
+            "target_centers_x": target_centers_x,
+            "target_height": target_height,
+        }
+
+    @staticmethod
+    def scale_triangle_object_output(triangle_parent, scale_factor):
+        """solve後の親子三角形オブジェクトをXZ方向にスケールする。"""
+        if abs(scale_factor - 1.0) <= 1e-12:
+            return
+
+        parent_data = triangle_parent.get("data", {})
+        parent_pos = parent_data.get("position", {})
+        parent_pos["x"] = float(parent_pos.get("x", 0.0)) * scale_factor
+        parent_pos["z"] = float(parent_pos.get("z", 0.0)) * scale_factor
+
+        for child in parent_data.get("child", []):
+            child_data = child.get("data", {})
+            child_scale = child_data.get("scale", {})
+            child_scale["x"] = float(child_scale.get("x", 1.0)) * scale_factor
+            child_scale["z"] = float(child_scale.get("z", 1.0)) * scale_factor
+
+    @staticmethod
+    def align_mesh_output_to_dot(
+        char_mesh_data,
+        char_folders,
+        triangle_status_records,
+        target_centers_x,
+        target_height,
+    ):
+        """solve後のメッシュをDot基準の高さと文字中心へ合わせる。"""
+        source_height = MeshRenderPipeline.compute_char_mesh_height(char_mesh_data)
+        if source_height > 1e-9 and target_height > 1e-9:
+            scale_factor = target_height / source_height
+        else:
+            scale_factor = 1.0
+
+        def center_for(index, fallback):
+            if 0 <= index < len(target_centers_x):
+                return float(target_centers_x[index])
+            return float(fallback) * scale_factor
+
+        for index, char_data in enumerate(char_mesh_data):
+            old_folder_x = float(char_data.get("folder_x", 0.0))
+            new_folder_x = center_for(index, old_folder_x)
+
+            scaled_contours = []
+            for contour in char_data.get("contours", []):
+                scaled_contours.append(
+                    np.asarray(contour, dtype=np.float64) * scale_factor
+                )
+            char_data["contours"] = scaled_contours
+            char_data["folder_x"] = new_folder_x
+
+            if index < len(char_folders):
+                char_folder = char_folders[index]
+                char_folder["data"]["position"]["x"] = new_folder_x
+                for triangle_parent in char_folder["data"].get("child", []):
+                    MeshRenderPipeline.scale_triangle_object_output(
+                        triangle_parent, scale_factor
+                    )
+
+        for record in triangle_status_records:
+            triangle = np.asarray(record.get("triangle"), dtype=np.float64)
+            if triangle.shape != (3, 2):
+                continue
+            old_folder_x = float(record.get("folder_x", 0.0))
+            char_index = int(record.get("char_index", -1))
+            new_folder_x = center_for(char_index, old_folder_x)
+
+            local_triangle = triangle.copy()
+            local_triangle[:, 0] -= old_folder_x
+            local_triangle *= scale_factor
+            local_triangle[:, 0] += new_folder_x
+            record["triangle"] = local_triangle
+            record["folder_x"] = new_folder_x
+
+        return {
+            "scale_factor": scale_factor,
+            "source_height": source_height,
+            "target_height": target_height,
+        }
+
+    @staticmethod
     def create_sheared_triangle(
         plane_template,
         triangle_template,
@@ -2365,10 +2517,22 @@ class MeshRenderPipeline:
             raise MissingGlyphError(missing_glyphs[0])
 
         mesh_height = max(1e-5, spacing * grid_height)
+        solve_mesh_height = max(
+            mesh_height, MeshRenderConfig.SOLVER_REFERENCE_TEXT_HEIGHT
+        )
+        dot_alignment_targets = MeshRenderPipeline.build_dot_alignment_targets(
+            text=text,
+            font=font,
+            font_size=font_size,
+            img_width=img.width,
+            grid_width=grid_width,
+            grid_height=grid_height,
+            spacing=spacing,
+        )
         char_mesh_data = MeshRenderPipeline.build_text_mesh_characters(
             text,
             mesh_font_path,
-            text_height=mesh_height,
+            text_height=solve_mesh_height,
             flatten_segment_length=flatten_segment_length,
             progress_callback=progress_callback,
         )
@@ -2388,6 +2552,18 @@ class MeshRenderPipeline:
             color,
             progress_callback=progress_callback,
         )
+        alignment_info = MeshRenderPipeline.align_mesh_output_to_dot(
+            char_mesh_data,
+            char_folders,
+            triangle_status_records,
+            dot_alignment_targets["target_centers_x"],
+            dot_alignment_targets["target_height"],
+        )
+        mesh_stats["dot_align_scale_factor"] = alignment_info["scale_factor"]
+        mesh_stats["dot_align_source_height"] = alignment_info["source_height"]
+        mesh_stats["dot_align_target_height"] = alignment_info["target_height"]
+        mesh_stats["solve_mesh_height"] = solve_mesh_height
+        mesh_stats["requested_mesh_height"] = mesh_height
 
         if progress_callback is not None:
             progress_callback(stage="preview", current=1, total=1, note="")
