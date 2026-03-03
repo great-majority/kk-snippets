@@ -5,19 +5,15 @@ import uuid
 from pathlib import Path
 
 import numpy as np
+import pathops
 import streamlit as st
 import wildmeshing as wildmeshing_lib
+from fontPens.flattenPen import FlattenPen
 from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.ttLib import TTFont
-from fontPens.flattenPen import FlattenPen
 from kkloader import HoneycomeSceneData
 from PIL import Image, ImageDraw, ImageFont
 from scipy.optimize import least_squares
-
-try:
-    import pathops
-except Exception:
-    pathops = None
 
 # ========================================
 # i18n対応: 多言語辞書
@@ -39,6 +35,16 @@ TRANSLATIONS = {
 #### どの設定で文字を作ったか忘れた！
 
 シーン内に生成された **「文字情報」フォルダ** の中に、使用したパラメータが保存されています。
+
+#### 生成方式の"ドット"と"メッシュ"はどう違う？
+
+ドットは平面を整列させることで文字を表現し、メッシュでは三角形ポリゴンを柔軟に敷き詰めて文字を表現します。
+
+- ドットモードは処理が早く、生成後のアイテム数が少ないため動作が軽い一方、文字の縁がギザギザします。
+- メッシュモードは処理に時間がかかりますが、文字の滑らかな輪郭をそのまま表現することができます。
+
+シーン中に小さく表示できればよい程度ではドットモード、ロゴなど文字を大きくシンボリックに表現したい場合はメッシュモードがおすすめです。
+
 """,
         "metadata_folder": "文字情報",
         "meta_font": "フォント",
@@ -158,6 +164,15 @@ If you must reduce plane count, adjust this parameter to find a good balance.
 #### I forgot which settings I used!
 
 The parameters are saved inside the **"Text Info"** folder in the generated scene.
+
+#### What's the difference between "Dot" and "Mesh" render modes?
+
+Dot mode represents text by arranging planes in a grid, while Mesh mode represents text by filling glyphs with flexible triangle polygons.
+
+- Dot mode is faster and creates fewer items, so scenes stay lighter, but text edges can look jagged.
+- Mesh mode takes longer to process, but it preserves smooth glyph outlines.
+
+If the text is only displayed small in a scene, Dot mode is usually enough. For large, symbolic text such as logos, Mesh mode is recommended.
 """,
         "metadata_folder": "Text Info",
         "meta_font": "Font",
