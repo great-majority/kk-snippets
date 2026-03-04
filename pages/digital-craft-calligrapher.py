@@ -357,6 +357,7 @@ def format_font_option(font_path):
         "Oswald-Regular.ttf": "縦長英字",
         "ZenKakuGothicNew-Regular.ttf": "無機質ゴシック",
         "ZenKakuGothicNew-Black.ttf": "無機質ゴシック太字",
+        "青春6フォント.ttf": "エモい手書き文字, ひらがなカタカナのみ",
     }
     note = impressions.get(font_path.name)
     if note:
@@ -3386,7 +3387,7 @@ def main():
             available_fonts, "MPLUSRounded1c-Regular.ttf"
         )
         render_mode = st.selectbox(
-            get_text("render_mode_label", lang),
+            f"✨️{get_text('render_mode_label', lang)} **NEW** ✨️",
             options=[
                 get_text("render_mode_dot", lang),
                 get_text("render_mode_mesh", lang),
