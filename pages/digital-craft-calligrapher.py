@@ -2128,6 +2128,100 @@ class MeshRenderPipeline:
         return valid_contours
 
     @staticmethod
+    def build_triangle_adjacency_order(tri_vertices, tri_indices):
+        """共有辺の隣接を優先し、局所性の高い三角形走査順を返す。"""
+        triangle_count = len(tri_indices)
+        if triangle_count <= 1:
+            return list(range(triangle_count))
+
+        tri_vertices = np.asarray(tri_vertices, dtype=np.float64)
+        tri_indices = np.asarray(tri_indices, dtype=np.int64)
+        centroids = np.mean(tri_vertices[tri_indices], axis=1)
+
+        adjacency = [set() for _ in range(triangle_count)]
+        edge_to_triangles = {}
+
+        # 辺を (min_vertex, max_vertex) で正規化し、向きに依存せず共有辺を検出する。
+        for local_index, tri_index in enumerate(tri_indices):
+            edges = (
+                (int(tri_index[0]), int(tri_index[1])),
+                (int(tri_index[1]), int(tri_index[2])),
+                (int(tri_index[2]), int(tri_index[0])),
+            )
+            for u, v in edges:
+                if u == v:
+                    continue
+                if u > v:
+                    u, v = v, u
+                edge_to_triangles.setdefault((u, v), []).append(local_index)
+
+        # 同じ辺キーを持つ三角形同士を隣接として接続する。
+        for triangle_ids in edge_to_triangles.values():
+            if len(triangle_ids) < 2:
+                continue
+            for pos in range(len(triangle_ids) - 1):
+                left = triangle_ids[pos]
+                for right in triangle_ids[pos + 1 :]:
+                    adjacency[left].add(right)
+                    adjacency[right].add(left)
+
+        remaining = set(range(triangle_count))
+        ordered_indices = []
+        last_index = None
+
+        while remaining:
+            # 成分の開始点: 初回は左下寄り、以降は直前三角形に最も近い未訪問を選ぶ。
+            if last_index is None:
+                start = min(
+                    remaining,
+                    key=lambda idx: (
+                        float(centroids[idx, 0]),
+                        float(centroids[idx, 1]),
+                        idx,
+                    ),
+                )
+            else:
+                base = centroids[last_index]
+                start = min(
+                    remaining,
+                    key=lambda idx: (
+                        float((centroids[idx, 0] - base[0]) ** 2)
+                        + float((centroids[idx, 1] - base[1]) ** 2),
+                        float(centroids[idx, 0]),
+                        float(centroids[idx, 1]),
+                        idx,
+                    ),
+                )
+
+            stack = [start]
+            while stack:
+                current = stack.pop()
+                if current not in remaining:
+                    continue
+                remaining.remove(current)
+                ordered_indices.append(current)
+                last_index = current
+
+                current_center = centroids[current]
+                # 近い隣接を先に訪れるため、逆順pushして pop 時に近い順となるようにする。
+                neighbors = [
+                    neighbor for neighbor in adjacency[current] if neighbor in remaining
+                ]
+                neighbors.sort(
+                    key=lambda idx: (
+                        float((centroids[idx, 0] - current_center[0]) ** 2)
+                        + float((centroids[idx, 1] - current_center[1]) ** 2),
+                        float(centroids[idx, 0]),
+                        float(centroids[idx, 1]),
+                        idx,
+                    ),
+                    reverse=True,
+                )
+                stack.extend(neighbors)
+
+        return ordered_indices
+
+    @staticmethod
     def triangulate_contours(contours):
         """輪郭群を三角形分割し、有効三角形を返す。"""
         valid_contours = MeshRenderPipeline.normalize_contours_for_triangulation(
@@ -2215,7 +2309,11 @@ class MeshRenderPipeline:
             if np.any(tri_indices < 0) or np.any(tri_indices >= len(tri_vertices)):
                 continue
 
-            for tri_index in tri_indices:
+            triangle_order = MeshRenderPipeline.build_triangle_adjacency_order(
+                tri_vertices, tri_indices
+            )
+            for tri_position in triangle_order:
+                tri_index = tri_indices[tri_position]
                 triangle = np.asarray(
                     [
                         tri_vertices[tri_index[0]],
