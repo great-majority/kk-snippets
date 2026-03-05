@@ -2102,8 +2102,8 @@ class MeshRenderPipeline:
         return None
 
     @staticmethod
-    def triangulate_contours(contours):
-        """輪郭群を三角形分割し、有効三角形を返す。"""
+    def normalize_contours_for_triangulation(contours):
+        """三角形分割前に輪郭を正規化して重なりを解消する。"""
         valid_contours = []
         for contour in contours:
             normalized = MeshRenderPipeline.dedupe_contour_points(contour)
@@ -2112,6 +2112,27 @@ class MeshRenderPipeline:
                 and abs(MeshRenderPipeline.polygon_signed_area(normalized)) > 1e-9
             ):
                 valid_contours.append(normalized)
+        if not valid_contours:
+            return []
+
+        # Noto系など重なり輪郭を含むグリフは、そのままでは穴判定を誤る。
+        # 先にブーリアン簡約して単純輪郭へ正規化してから分割する。
+        simplified_path = MeshRenderPipeline.contours_to_pathops_path(valid_contours)
+        if simplified_path is not None:
+            simplified_path.simplify()
+            simplified_contours = MeshRenderPipeline.pathops_path_to_contours(
+                simplified_path
+            )
+            if simplified_contours:
+                return simplified_contours
+        return valid_contours
+
+    @staticmethod
+    def triangulate_contours(contours):
+        """輪郭群を三角形分割し、有効三角形を返す。"""
+        valid_contours = MeshRenderPipeline.normalize_contours_for_triangulation(
+            contours
+        )
         if not valid_contours:
             return []
 
