@@ -631,14 +631,14 @@ def load_font(font_size, font_path=None):
     if font_path is not None:
         try:
             font = ImageFont.truetype(str(font_path), font_size)
-        except Exception:
+        except OSError:
             font = None
     if font is None:
         for candidate in list_available_fonts():
             try:
                 font = ImageFont.truetype(str(candidate), font_size)
                 break
-            except Exception:
+            except OSError:
                 font = None
     if font is None:
         font = ImageFont.load_default()
@@ -891,7 +891,7 @@ class TriangleSolverOptimized:
                     xtol=1e-12,
                     gtol=1e-12,
                 )
-            except Exception:
+            except (ValueError, RuntimeError, FloatingPointError):
                 continue
 
             residual = float(np.sum(optimized.fun**2))
@@ -2068,7 +2068,8 @@ class MeshRenderPipeline:
         return None
 
     @staticmethod
-    def triangulate_contours(contours):
+    def normalize_contours_for_triangulation(contours):
+        """三角形分割前に輪郭を正規化して重なりを解消する。"""
         valid_contours = []
         for contour in contours:
             normalized = MeshRenderPipeline.dedupe_contour_points(contour)
@@ -2077,6 +2078,27 @@ class MeshRenderPipeline:
                 and abs(MeshRenderPipeline.polygon_signed_area(normalized)) > 1e-9
             ):
                 valid_contours.append(normalized)
+        if not valid_contours:
+            return []
+
+        # Noto系など重なり輪郭を含むグリフは、そのままでは穴判定を誤る。
+        # 先にブーリアン簡約して単純輪郭へ正規化してから分割する。
+        simplified_path = MeshRenderPipeline.contours_to_pathops_path(valid_contours)
+        if simplified_path is not None:
+            simplified_path.simplify()
+            simplified_contours = MeshRenderPipeline.pathops_path_to_contours(
+                simplified_path
+            )
+            if simplified_contours:
+                return simplified_contours
+        return valid_contours
+
+    @staticmethod
+    def triangulate_contours(contours):
+        """輪郭群を三角形分割し、有効三角形を返す。"""
+        valid_contours = MeshRenderPipeline.normalize_contours_for_triangulation(
+            contours
+        )
         if not valid_contours:
             return []
 
@@ -2144,7 +2166,7 @@ class MeshRenderPipeline:
                     hole_pts=tri_holes_input,
                     mute_log=MeshRenderConfig.TRIWILD_MUTE_LOG,
                 )
-            except Exception:
+            except (ValueError, RuntimeError, FloatingPointError):
                 continue
 
             tri_indices = np.asarray(tri_indices, dtype=np.int64)
@@ -2438,7 +2460,7 @@ class MeshRenderPipeline:
             ring_path = pathops.op(stroked_path, fill_path, pathops.PathOp.DIFFERENCE)
             ring_path.simplify()
             return MeshRenderPipeline.pathops_path_to_contours(ring_path)
-        except Exception:
+        except (ValueError, RuntimeError, FloatingPointError):
             return None
 
     @staticmethod
