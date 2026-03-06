@@ -329,6 +329,7 @@ class MeshRenderConfig:
 
 class MissingGlyphError(ValueError):
     def __init__(self, error_moji):
+        """未対応グリフ文字を保持して例外を初期化する。"""
         self.error_moji = error_moji
         super().__init__(error_moji)
 
@@ -344,10 +345,12 @@ TRIANGLE_PRESETS = {
 
 
 def list_available_fonts():
+    """利用可能なフォントファイル一覧を返す。"""
     return sorted(FONT_DIR.glob("*.ttf"))
 
 
 def format_font_option(font_path):
+    """フォント表示名に書体メモを付与して返す。"""
     impressions = {
         "NotoSansJP-Regular.ttf": "ゴシック体",
         "NotoSerifJP-Regular.ttf": "明朝体",
@@ -370,6 +373,7 @@ def format_font_option(font_path):
 
 
 def select_font_option(available_fonts, default_font_name):
+    """フォント選択UIを表示して選択結果を返す。"""
     if not available_fonts:
         st.warning("フォントが見つかりません")
         return None
@@ -396,6 +400,7 @@ def build_preview_from_image(img, grid_width, grid_height):
 
 
 def render_preview(original_img, preview_pixels, grid_width, grid_height, lang="ja"):
+    """生成プレビュー画像と解像度情報をUIに表示する。"""
     st.subheader(f"🖼️ {get_text('preview_title', lang)}")
     st.markdown(
         f"**{get_text('pixel_data', lang).format(width=grid_width, height=grid_height)}**"
@@ -418,6 +423,7 @@ def render_scene_info(
     is_mesh_mode=False,
     mesh_stats=None,
 ):
+    """生成結果の件数メトリクスをモード別に表示する。"""
     st.subheader(f"📝 {get_text('scene_info_title', lang)}")
     info_col1, info_col2, info_col3 = st.columns(3)
 
@@ -477,6 +483,7 @@ def render_scene_info(
 
 
 def build_scene_filename(text_input):
+    """テキスト入力から安全なシーンファイル名を作る。"""
     safe_text = "".join(c if c.isalnum() else "_" for c in text_input)
     return f"digitalcraft_scene_text_{safe_text}.png"
 
@@ -585,6 +592,7 @@ TEMPLATE_PLANE_DATA = {
 
 
 def build_template_scene() -> "HoneycomeSceneData":
+    """ベースとなるテンプレートシーンを組み立てる。"""
     scene = HoneycomeSceneData()
     scene.image = None
     scene.version = TEMPLATE_SCENE_META["version"]
@@ -631,6 +639,7 @@ def load_template():
 
 # 関数定義
 def load_font(font_size, font_path=None):
+    """指定フォントまたは利用可能フォントから読み込みを行う。"""
     font = None
     if font_path is not None:
         try:
@@ -716,6 +725,7 @@ class TriangleSolverLMReparam:
     """sx/cx/cz を再パラメータ化して LM で解くソルバ。"""
 
     def __init__(self, source_xz):
+        """ソルバで使うソース三角形行列を前計算して保持する。"""
         source = np.asarray(source_xz, dtype=np.float64)
         if source.shape != (3, 2):
             raise ValueError("TriangleSolverLMReparam requires source_xz shape (3, 2)")
@@ -738,6 +748,7 @@ class TriangleSolverLMReparam:
 
     @staticmethod
     def effective_scale(sx, sz, theta_deg):
+        """回転込みの親スケールから実効X/Z倍率を計算する。"""
         rad = theta_deg * DEG2RAD
         cos2 = math.cos(rad) ** 2
         sin2 = math.sin(rad) ** 2
@@ -745,6 +756,7 @@ class TriangleSolverLMReparam:
 
     @classmethod
     def _build_A_entries(cls, alpha, sx, sz, theta, child_x, child_z):
+        """線形変換行列Aの4要素をパラメータから計算する。"""
         alpha_rad = alpha * DEG2RAD
         theta_rad = theta * DEG2RAD
         cos_a, sin_a = math.cos(alpha_rad), math.sin(alpha_rad)
@@ -759,6 +771,7 @@ class TriangleSolverLMReparam:
     def forward(
         self, source_xz=None, *, px, pz, alpha, sx, theta, cs=None, cx=None, cz=None
     ):
+        """与えたパラメータで座標群を前方変換する。"""
         source = (
             self.source_xz
             if source_xz is None
@@ -787,6 +800,7 @@ class TriangleSolverLMReparam:
         return out
 
     def reconstruction_error(self, target_xz, solved):
+        """再構成結果と目標座標との差分指標を返す。"""
         reconstructed = self.forward(
             px=solved["px"],
             pz=solved["pz"],
@@ -854,6 +868,7 @@ class TriangleSolverLMReparam:
         return sx, sz, cx, cz
 
     def solve(self, target_xz):
+        """目標三角形へ写像するせん断パラメータを推定する。"""
         target = np.asarray(target_xz, dtype=np.float64)
         if target.shape != (3, 2):
             raise ValueError("target_xz must be shape (3, 2)")
@@ -1022,11 +1037,13 @@ class DotRenderPipeline:
 
     @staticmethod
     def compute_canvas_height(text, font, padding):
+        """指定フォントに対する文字描画用キャンバス高を返す。"""
         ascent, descent = font.getmetrics()
         return (ascent + descent) + padding * 2
 
     @staticmethod
     def compute_canvas_size(text, font, padding):
+        """文字列全体に対する標準キャンバスサイズを計算する。"""
         max_char_width = 0
         dummy_img = Image.new("L", (1, 1))
         dummy_draw = ImageDraw.Draw(dummy_img)
@@ -1040,6 +1057,7 @@ class DotRenderPipeline:
 
     @staticmethod
     def compute_layout(text_input, per_char_resolution, text_height, plane_size_factor):
+        """ドット配置用のグリッド・スケール関連値を計算する。"""
         grid_width = max(1, per_char_resolution * max(1, len(text_input)))
         grid_height = per_char_resolution
         pixel_size = text_height / per_char_resolution
@@ -1222,6 +1240,7 @@ class DotRenderPipeline:
 
     @staticmethod
     def colors_close(color_a, color_b, threshold):
+        """2色が許容誤差以内かをRGB各成分で判定する。"""
         if threshold <= 0:
             return color_a == color_b
         for channel in ("r", "g", "b"):
@@ -1262,6 +1281,7 @@ class DotRenderPipeline:
         effective_threshold = 1 if antialias else 128
 
         def flush_run(run_start, run_end, run_color, row_index):
+            """連続ピクセル区間をラン情報として記録する。"""
             run_length = run_end - run_start + 1
             run_info = {
                 "start": run_start,
@@ -1274,6 +1294,7 @@ class DotRenderPipeline:
             runs_by_row[row_index].append(run_info)
 
         def add_plane(run_start, run_end, run_color, row_start, row_end):
+            """ラン情報から1枚の平面オブジェクトを生成する。"""
             run_length = run_end - run_start + 1
             run_height = row_end - row_start + 1
             x_first = start_x + run_start * spacing
@@ -1330,6 +1351,7 @@ class DotRenderPipeline:
             return planes, len(runs)
 
         def color_key(color_value):
+            """色辞書をハッシュ可能なタプルへ変換する。"""
             return (
                 color_value["r"],
                 color_value["g"],
@@ -1515,6 +1537,7 @@ class DotRenderPipeline:
 
     @staticmethod
     def default_advanced_settings():
+        """ドットモード詳細設定のデフォルト値を返す。"""
         return {
             "per_char_resolution": DotRenderConfig.DEFAULT_RESOLUTION,
             "threshold": 1,
@@ -1527,6 +1550,7 @@ class DotRenderPipeline:
 
     @staticmethod
     def render_advanced_settings(lang):
+        """ドットモード詳細設定UIを表示して設定を返す。"""
         settings = DotRenderPipeline.default_advanced_settings()
         col1, col2 = st.columns(2)
         with col1:
@@ -1573,6 +1597,7 @@ class DotRenderPipeline:
         light_cancel,
         dot_settings,
     ):
+        """ドットモード生成時のメタデータ辞書を構築する。"""
         return {
             get_text("meta_font", lang): selected_font.name
             if selected_font
@@ -1611,6 +1636,7 @@ class DotRenderPipeline:
         generation_metadata,
         lang,
     ):
+        """main向けにドットモード生成処理を実行して結果を返す。"""
         edge_color = hex_to_color(dot_settings["edge_color_hex"])
         with st.spinner(get_text("generating", lang)):
             (
@@ -1876,6 +1902,7 @@ class MeshRenderPipeline:
         plot_offset_y = plot_top + (plot_height - scaled_height) * 0.5
 
         def project(point):
+            """メッシュ座標をプレビュー画像座標へ変換する。"""
             # グリフ座標をシーンXZへ正規化する際に反転が入るため、
             # プレビュー側はX/Yを反転して見た目を元の文字方向に合わせる。
             x = plot_offset_x + (max_x - point[0]) * scale
@@ -1956,6 +1983,7 @@ class MeshRenderPipeline:
         current_points = []
 
         def flush_contour():
+            """現在の点列を検証して輪郭として確定する。"""
             nonlocal current_points
             if not current_points:
                 return
@@ -2001,6 +2029,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def polygon_signed_area(points):
+        """多角形の符号付き面積を算出する。"""
         x_values = points[:, 0]
         y_values = points[:, 1]
         return 0.5 * (
@@ -2010,6 +2039,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def dedupe_contour_points(contour, eps=1e-9):
+        """輪郭点列の連続重複と終端重複を除去する。"""
         if len(contour) <= 1:
             return contour
         deduped = [contour[0]]
@@ -2022,6 +2052,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def point_in_polygon(point, polygon):
+        """点が多角形内部にあるかをレイキャスト法で判定する。"""
         px, py = point
         inside = False
         count = len(polygon)
@@ -2039,6 +2070,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def build_contour_hierarchy(contours):
+        """輪郭同士の親子関係と深さを計算する。"""
         contour_count = len(contours)
         areas = [
             abs(MeshRenderPipeline.polygon_signed_area(contour)) for contour in contours
@@ -2046,6 +2078,7 @@ class MeshRenderPipeline:
         parents = [-1] * contour_count
 
         def containment_probes(contour):
+            """包含判定に使う代表点群を生成する。"""
             probes = [np.mean(contour, axis=0)]
             count = len(contour)
             for index in range(count):
@@ -2274,6 +2307,7 @@ class MeshRenderPipeline:
             holes = []
 
             def add_ring_segments(ring):
+                """輪郭リングを頂点列とセグメント列へ追加する。"""
                 start = len(vertices)
                 ring_count = len(ring)
                 for point in ring:
@@ -2356,6 +2390,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def build_kerning_table(tt_font):
+        """フォントからカーニングペア辞書を抽出する。"""
         kerning = {}
         if "kern" not in tt_font:
             return kerning
@@ -2372,6 +2407,7 @@ class MeshRenderPipeline:
         flatten_segment_length=MeshRenderConfig.FLATTEN_SEGMENT_LENGTH_DEFAULT,
         progress_callback=None,
     ):
+        """文字列をメッシュ化用の輪郭データ列へ変換する。"""
         tt_font = TTFont(str(font_path))
         try:
             glyph_set = tt_font.getGlyphSet()
@@ -2559,6 +2595,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def contours_to_pathops_path(contours):
+        """輪郭配列をPathOpsの閉路パスへ変換する。"""
         if pathops is None:
             return None
         path = pathops.Path()
@@ -2582,6 +2619,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def pathops_path_to_contours(path):
+        """PathOpsパスを輪郭配列へ変換する。"""
         if path is None:
             return []
         converted = []
@@ -2827,6 +2865,7 @@ class MeshRenderPipeline:
             scale_factor = 1.0
 
         def center_for(index, fallback):
+            """文字インデックスから整列後の中心X座標を返す。"""
             if 0 <= index < len(target_centers_x):
                 return float(target_centers_x[index])
             return float(fallback) * scale_factor
@@ -2883,6 +2922,7 @@ class MeshRenderPipeline:
         y_offset=0.0,
         reconstruction_max_abs_tol=MeshRenderConfig.RECONSTRUCTION_MAX_ABS_TOL,
     ):
+        """目標三角形に対応する親子三角形オブジェクトを生成する。"""
         solved = solver.solve(target_triangle)
         residual = solved.get("residual", float("inf"))
         if not np.isfinite(residual):
@@ -3196,6 +3236,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def default_advanced_settings():
+        """メッシュモード詳細設定のデフォルト値を返す。"""
         return {
             "flatten_segment_length": float(
                 MeshRenderConfig.FLATTEN_SEGMENT_LENGTH_DEFAULT
@@ -3215,6 +3256,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def render_advanced_settings(lang):
+        """メッシュモード詳細設定UIを表示して設定を返す。"""
         settings = {}
         settings["flatten_segment_length"] = st.slider(
             get_text("mesh_flatten_length_label", lang),
@@ -3285,6 +3327,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def apply_triwild_settings(*, stop_quality, edge_length_r, target_edge_len):
+        """TriWild分割パラメータを設定へ反映する。"""
         MeshRenderConfig.TRIWILD_STOP_QUALITY = float(stop_quality)
         MeshRenderConfig.TRIWILD_EDGE_LENGTH_R = float(edge_length_r)
         MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN = float(target_edge_len)
@@ -3307,6 +3350,7 @@ class MeshRenderPipeline:
         outline_width,
         outline_color_hex,
     ):
+        """メッシュモード生成時のメタデータ辞書を構築する。"""
         return {
             get_text("meta_font", lang): selected_font.name
             if selected_font
@@ -3335,6 +3379,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def build_progress_callback(lang):
+        """メッシュ生成進捗を更新するコールバックを構築する。"""
         progress_bar = st.progress(0, text=f"{get_text('generating', lang)} 0%")
         progress_status = st.empty()
         progress_state = {"percent": -1, "status": ""}
@@ -3351,6 +3396,7 @@ class MeshRenderPipeline:
         }
 
         def mesh_progress_callback(stage, current=None, total=None, note=""):
+            """進捗ステージを百分率へ変換してUIへ反映する。"""
             if stage == "prepare":
                 percent = 5
             elif stage == "glyph":
@@ -3432,6 +3478,7 @@ class MeshRenderPipeline:
         generation_metadata,
         lang,
     ):
+        """main向けにメッシュモード生成処理を実行して結果を返す。"""
         MeshRenderPipeline.apply_triwild_settings(
             stop_quality=stop_quality,
             edge_length_r=edge_length_r,
@@ -3481,6 +3528,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def render_generation_feedback(mesh_stats, lang):
+        """メッシュ生成の警告と誤差サマリを表示する。"""
         if not mesh_stats:
             return
         if mesh_stats["solve_failed_count"] > 0:
@@ -3505,6 +3553,7 @@ class MeshRenderPipeline:
 
     @staticmethod
     def render_triangulation_section(triangulation_preview, lang):
+        """三角形分割プレビュー表示セクションを描画する。"""
         st.subheader(f"🔺 {get_text('mesh_triangulation_title', lang)}")
         if triangulation_preview is None:
             st.caption(get_text("mesh_triangulation_empty", lang))
@@ -3516,6 +3565,7 @@ class MeshRenderPipeline:
 
 
 def main():
+    """テキストからシーンを生成するStreamlitアプリ本体。"""
     # メイン UI
     try:
         # ページ設定
