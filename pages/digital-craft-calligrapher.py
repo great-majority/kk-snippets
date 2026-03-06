@@ -304,6 +304,10 @@ class MeshRenderConfig:
     SOLVER_REACHABLE_RESIDUAL_TOL = 1e-5
     SOLVER_EARLY_BREAK_RESIDUAL_TOL = 1e-12
     SOLVER_MAX_NFEV = 120
+    SOLVER_SX_MIN = 0.01
+    SOLVER_SX_MAX = 0.999999
+    SOLVER_CHILD_SCALE_MIN = 1e-4
+    SOLVER_LM_REG_WEIGHT = 1e-6
     SOLVER_REFERENCE_TEXT_HEIGHT = 1.0
     FLATTEN_SEGMENT_LENGTH_DEFAULT = 20.0
     OUTLINE_WIDTH_DEFAULT = 0.0
@@ -717,14 +721,14 @@ def create_plane(template, x, y, z, color, scale=1.0):
     return plane
 
 
-class TriangleSolverOptimized:
-    """triangle.ipynb の TriangleSolverOptimized 実装。"""
+class TriangleSolverLMReparam:
+    """sx/cx/cz を再パラメータ化して LM で解くソルバ。"""
 
     def __init__(self, source_xz):
         """ソルバで使うソース三角形行列を前計算して保持する。"""
         source = np.asarray(source_xz, dtype=np.float64)
         if source.shape != (3, 2):
-            raise ValueError("TriangleSolverOptimized requires source_xz shape (3, 2)")
+            raise ValueError("TriangleSolverLMReparam requires source_xz shape (3, 2)")
         self.source_xz = source
         self.src0 = source[0]
 
@@ -814,11 +818,68 @@ class TriangleSolverOptimized:
             "rmse": float(np.sqrt(np.mean(diff * diff))),
         }
 
+    @staticmethod
+    def _sigmoid(x):
+        x = np.asarray(x, dtype=np.float64)
+        out = np.empty_like(x)
+        positive = x >= 0
+        out[positive] = 1.0 / (1.0 + np.exp(-x[positive]))
+        exp_x = np.exp(x[~positive])
+        out[~positive] = exp_x / (1.0 + exp_x)
+        return out
+
+    @staticmethod
+    def _softplus(x):
+        x = np.asarray(x, dtype=np.float64)
+        return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
+
+    @staticmethod
+    def _softplus_inv(y):
+        y = np.asarray(y, dtype=np.float64)
+        out = np.empty_like(y)
+        small = y < 20.0
+        out[small] = np.log(np.expm1(y[small]))
+        out[~small] = y[~small]
+        return out
+
+    @staticmethod
+    def _logit(p):
+        p = np.asarray(p, dtype=np.float64)
+        return np.log(p) - np.log1p(-p)
+
+    def _to_unconstrained(self, sx, cx, cz, sx_min, sx_span, c_min):
+        eps = 1e-12
+        p = (sx - sx_min) / sx_span
+        p = np.clip(p, eps, 1.0 - eps)
+        u = float(self._logit(np.array([p], dtype=np.float64))[0])
+
+        cx_pos = max(cx - c_min, eps)
+        cz_pos = max(cz - c_min, eps)
+        v = float(self._softplus_inv(np.array([cx_pos], dtype=np.float64))[0])
+        w = float(self._softplus_inv(np.array([cz_pos], dtype=np.float64))[0])
+        return u, v, w
+
+    def _from_unconstrained(self, u, v, w, sx_min, sx_max, sx_span, c_min):
+        sx = sx_min + sx_span * float(self._sigmoid(np.array([u], dtype=np.float64))[0])
+        sx = float(np.clip(sx, sx_min, sx_max))
+        sz = 1.0 - sx
+        cx = c_min + float(self._softplus(np.array([v], dtype=np.float64))[0])
+        cz = c_min + float(self._softplus(np.array([w], dtype=np.float64))[0])
+        return sx, sz, cx, cz
+
     def solve(self, target_xz):
         """目標三角形へ写像するせん断パラメータを推定する。"""
         target = np.asarray(target_xz, dtype=np.float64)
         if target.shape != (3, 2):
             raise ValueError("target_xz must be shape (3, 2)")
+
+        sx_min = float(MeshRenderConfig.SOLVER_SX_MIN)
+        sx_max = float(MeshRenderConfig.SOLVER_SX_MAX)
+        c_min = float(MeshRenderConfig.SOLVER_CHILD_SCALE_MIN)
+        reg_weight = float(MeshRenderConfig.SOLVER_LM_REG_WEIGHT)
+        if not (0.0 < sx_min < sx_max < 1.0):
+            return {"reachable": False, "residual": float("inf")}
+        sx_span = sx_max - sx_min
 
         q0 = target[0]
         dq1 = target[1] - q0
@@ -827,7 +888,6 @@ class TriangleSolverOptimized:
 
         a_target = target_edges @ self.inv_source_edges
         translation = q0 - a_target @ self.src0
-
         t00, t01 = float(a_target[0, 0]), float(a_target[0, 1])
         t10, t11 = float(a_target[1, 0]), float(a_target[1, 1])
 
@@ -842,32 +902,12 @@ class TriangleSolverOptimized:
         alpha_0 = math.atan2(u_mat[0, 1], u_mat[0, 0]) / DEG2RAD
         theta_0 = math.atan2(v_mat[0, 1], v_mat[0, 0]) / DEG2RAD
         sigma_abs = np.abs(sigma)
-        child_scale_min = 1e-4
-        cx_0 = max(float(sigma_abs[0]), child_scale_min)
-        cz_0 = max(float(sigma_abs[1]), child_scale_min)
+        cx_0 = max(float(sigma_abs[0]), c_min)
+        cz_0 = max(float(sigma_abs[1]), c_min)
         cs_0 = max(float(sigma_abs[0] + sigma_abs[1]), 0.02)
-        sx_0 = float(np.clip(sigma_abs[0] / cs_0, 0.02, 0.98))
+        sx_0 = float(np.clip(float(sigma_abs[0] / cs_0), sx_min + 1e-8, sx_max - 1e-8))
 
-        max_sigma = max(float(np.max(sigma_abs)), 1.0)
-        max_child_scale = max(10.0, max_sigma * 4.0)
-
-        def equations(params):
-            """最小二乗最適化の残差ベクトルを構築する。"""
-            alpha, sx, theta, cx, cz = params
-            sz = 1.0 - sx
-            eff_x, eff_z = self.effective_scale(sx, sz, theta)
-            if eff_x <= 1e-8 or eff_z <= 1e-8:
-                return np.array([1e3, 1e3, 1e3, 1e3], dtype=np.float64)
-            child_x = cx / eff_x
-            child_z = cz / eff_z
-            a00, a01, a10, a11 = self._build_A_entries(
-                alpha, sx, sz, theta, child_x, child_z
-            )
-            return np.array(
-                [a00 - t00, a01 - t01, a10 - t10, a11 - t11], dtype=np.float64
-            )
-
-        candidates = [
+        candidates_direct = [
             (alpha_0, sx_0, theta_0, cx_0, cz_0),
             (alpha_0 + 180, sx_0, theta_0 + 180, cx_0, cz_0),
             (alpha_0, 1 - sx_0, theta_0 + 90, cz_0, cx_0),
@@ -878,30 +918,49 @@ class TriangleSolverOptimized:
             (alpha_0 + 270, sx_0, theta_0 + 270, cx_0, cz_0),
         ]
 
+        candidates = []
+        for alpha, sx, theta, cx, cz in candidates_direct:
+            sx_clamped = float(np.clip(sx, sx_min + 1e-8, sx_max - 1e-8))
+            cx_clamped = max(float(cx), c_min + 1e-8)
+            cz_clamped = max(float(cz), c_min + 1e-8)
+            u, v, w = self._to_unconstrained(
+                sx_clamped, cx_clamped, cz_clamped, sx_min, sx_span, c_min
+            )
+            candidates.append(np.array([float(alpha), u, float(theta), v, w], dtype=np.float64))
+
+        def make_equations(prior):
+            def equations(unconstrained_params):
+                alpha, u, theta, v, w = unconstrained_params
+                sx, sz, cx, cz = self._from_unconstrained(
+                    u, v, w, sx_min, sx_max, sx_span, c_min
+                )
+                eff_x, eff_z = self.effective_scale(sx, sz, theta)
+                if eff_x <= 1e-8 or eff_z <= 1e-8:
+                    geom = np.array([1e3, 1e3, 1e3, 1e3], dtype=np.float64)
+                else:
+                    child_x = cx / eff_x
+                    child_z = cz / eff_z
+                    a00, a01, a10, a11 = self._build_A_entries(
+                        alpha, sx, sz, theta, child_x, child_z
+                    )
+                    geom = np.array(
+                        [a00 - t00, a01 - t01, a10 - t10, a11 - t11], dtype=np.float64
+                    )
+                # method=\"lm\" は残差次元>=変数次元が必要なので微小正則化を加える。
+                reg = reg_weight * (unconstrained_params - prior)
+                return np.concatenate([geom, reg])
+
+            return equations
+
         best_params = None
         best_residual = float("inf")
-        lower_bounds = np.array(
-            [-720.0, 0.02, -720.0, child_scale_min, child_scale_min],
-            dtype=np.float64,
-        )
-        upper_bounds = np.array(
-            [720.0, 0.98, 720.0, max_child_scale, max_child_scale], dtype=np.float64
-        )
-
-        for candidate in candidates:
-            initial = (
-                float(candidate[0]),
-                float(np.clip(candidate[1], 0.02, 0.98)),
-                float(candidate[2]),
-                max(float(candidate[3]), child_scale_min),
-                max(float(candidate[4]), child_scale_min),
-            )
+        for initial in candidates:
+            equations = make_equations(initial)
             try:
                 optimized = least_squares(
                     equations,
-                    initial,
-                    bounds=(lower_bounds, upper_bounds),
-                    method="trf",
+                    x0=initial,
+                    method="lm",
                     max_nfev=MeshRenderConfig.SOLVER_MAX_NFEV,
                     ftol=1e-12,
                     xtol=1e-12,
@@ -910,26 +969,24 @@ class TriangleSolverOptimized:
             except (ValueError, RuntimeError, FloatingPointError):
                 continue
 
-            residual = float(np.sum(optimized.fun**2))
-            solved = optimized.x
-            if (
-                residual < best_residual
-                and 0 < solved[1] < 1
-                and solved[3] > 0
-                and solved[4] > 0
-            ):
+            geom = equations(optimized.x)[:4]
+            residual = float(np.sum(geom**2))
+            if residual < best_residual:
                 best_residual = residual
-                best_params = solved
+                best_params = optimized.x
             if residual < MeshRenderConfig.SOLVER_EARLY_BREAK_RESIDUAL_TOL:
                 break
 
         if best_params is None:
             return {"reachable": False, "residual": float("inf")}
 
-        alpha, sx, theta, cx, cz = best_params
-        sz = 1.0 - sx
+        alpha, u, theta, v, w = best_params
+        sx, sz, cx, cz = self._from_unconstrained(u, v, w, sx_min, sx_max, sx_span, c_min)
         eff_x, eff_z = self.effective_scale(sx, sz, theta)
-        return {
+        if eff_x <= 1e-12 or eff_z <= 1e-12:
+            return {"reachable": False, "residual": float("inf")}
+
+        result = {
             "px": float(translation[0]),
             "pz": float(translation[1]),
             "alpha": float(alpha % 360),
@@ -938,13 +995,13 @@ class TriangleSolverOptimized:
             "theta": float(theta % 360),
             "cx": float(cx),
             "cz": float(cz),
-            # 既存互換のため平均スカラーも保持する。
             "cs": float(0.5 * (cx + cz)),
             "child_sx": float(cx / eff_x),
             "child_sz": float(cz / eff_z),
             "residual": best_residual,
             "reachable": best_residual < MeshRenderConfig.SOLVER_REACHABLE_RESIDUAL_TOL,
         }
+        return result
 
 
 def hex_to_color(hex_color):
@@ -1627,7 +1684,7 @@ class MeshRenderPipeline:
     """メッシュ(三角形)レンダリング関連の設定と処理入口を集約する。"""
 
     Config = MeshRenderConfig
-    Solver = TriangleSolverOptimized
+    Solver = TriangleSolverLMReparam
 
     @staticmethod
     def find_missing_glyphs(text, font_path):
@@ -1662,7 +1719,7 @@ class MeshRenderPipeline:
         progress_callback=None,
     ):
         """文字輪郭を wildmeshing で三角形分割し、親平面+子三角形で表現する。"""
-        solver = TriangleSolverOptimized(MeshRenderConfig.SOURCE_TRIANGLE)
+        solver = TriangleSolverLMReparam(MeshRenderConfig.SOURCE_TRIANGLE)
         char_folders = []
         triangle_count = 0
         raw_triangle_count = 0
