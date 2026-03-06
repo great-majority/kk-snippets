@@ -610,7 +610,7 @@ class TriangleSolverOptimized:
                     xtol=1e-12,
                     gtol=1e-12,
                 )
-            except Exception:
+            except (ValueError, RuntimeError, FloatingPointError):
                 continue
 
             residual = float(np.sum(optimized.fun**2))
@@ -875,8 +875,10 @@ class MeshPipeline:
         return None
 
     @staticmethod
-    def triangulate_contours(contours: list[np.ndarray]) -> list[np.ndarray]:
-        """輪郭群を三角形分割して有効三角形リストを返す。"""
+    def normalize_contours_for_triangulation(
+        contours: list[np.ndarray],
+    ) -> list[np.ndarray]:
+        """三角形分割前に輪郭を正規化して重なりを解消する。"""
         valid_contours: list[np.ndarray] = []
         for contour in contours:
             normalized = MeshPipeline.dedupe_contour_points(contour)
@@ -885,6 +887,119 @@ class MeshPipeline:
                 and abs(MeshPipeline.polygon_signed_area(normalized)) > 1e-9
             ):
                 valid_contours.append(normalized)
+        if not valid_contours:
+            return []
+
+        # 重なり輪郭を含むパスはそのままだと穴判定を誤る場合があるため、
+        # 先にブーリアン簡約して単純輪郭へ正規化してから分割する。
+        simplified_path = MeshPipeline.contours_to_pathops_path(valid_contours)
+        if simplified_path is not None:
+            simplified_path.simplify()
+            simplified_contours = MeshPipeline.pathops_path_to_contours(simplified_path)
+            if simplified_contours:
+                return simplified_contours
+        return valid_contours
+
+    @staticmethod
+    def build_triangle_adjacency_order(
+        tri_vertices: np.ndarray, tri_indices: np.ndarray
+    ) -> list[int]:
+        """共有辺の隣接を優先し、局所性の高い三角形走査順を返す。"""
+        triangle_count = len(tri_indices)
+        if triangle_count <= 1:
+            return list(range(triangle_count))
+
+        tri_vertices = np.asarray(tri_vertices, dtype=np.float64)
+        tri_indices = np.asarray(tri_indices, dtype=np.int64)
+        centroids = np.mean(tri_vertices[tri_indices], axis=1)
+
+        adjacency: list[set[int]] = [set() for _ in range(triangle_count)]
+        edge_to_triangles: dict[tuple[int, int], list[int]] = {}
+
+        # 辺を (min_vertex, max_vertex) で正規化し、向きに依存せず共有辺を検出する。
+        for local_index, tri_index in enumerate(tri_indices):
+            edges = (
+                (int(tri_index[0]), int(tri_index[1])),
+                (int(tri_index[1]), int(tri_index[2])),
+                (int(tri_index[2]), int(tri_index[0])),
+            )
+            for u, v in edges:
+                if u == v:
+                    continue
+                if u > v:
+                    u, v = v, u
+                edge_to_triangles.setdefault((u, v), []).append(local_index)
+
+        # 同じ辺キーを持つ三角形同士を隣接として接続する。
+        for triangle_ids in edge_to_triangles.values():
+            if len(triangle_ids) < 2:
+                continue
+            for pos in range(len(triangle_ids) - 1):
+                left = triangle_ids[pos]
+                for right in triangle_ids[pos + 1 :]:
+                    adjacency[left].add(right)
+                    adjacency[right].add(left)
+
+        remaining = set(range(triangle_count))
+        ordered_indices: list[int] = []
+        last_index: int | None = None
+
+        while remaining:
+            # 成分の開始点: 初回は左下寄り、以降は直前三角形に最も近い未訪問を選ぶ。
+            if last_index is None:
+                start = min(
+                    remaining,
+                    key=lambda idx: (
+                        float(centroids[idx, 0]),
+                        float(centroids[idx, 1]),
+                        idx,
+                    ),
+                )
+            else:
+                base = centroids[last_index]
+                start = min(
+                    remaining,
+                    key=lambda idx: (
+                        float((centroids[idx, 0] - base[0]) ** 2)
+                        + float((centroids[idx, 1] - base[1]) ** 2),
+                        float(centroids[idx, 0]),
+                        float(centroids[idx, 1]),
+                        idx,
+                    ),
+                )
+
+            stack = [start]
+            while stack:
+                current = stack.pop()
+                if current not in remaining:
+                    continue
+                remaining.remove(current)
+                ordered_indices.append(current)
+                last_index = current
+
+                current_center = centroids[current]
+                # 近い隣接を先に訪れるため、逆順pushして pop 時に近い順となるようにする。
+                neighbors = [
+                    neighbor for neighbor in adjacency[current] if neighbor in remaining
+                ]
+                neighbors.sort(
+                    key=lambda idx: (
+                        float((centroids[idx, 0] - current_center[0]) ** 2)
+                        + float((centroids[idx, 1] - current_center[1]) ** 2),
+                        float(centroids[idx, 0]),
+                        float(centroids[idx, 1]),
+                        idx,
+                    ),
+                    reverse=True,
+                )
+                stack.extend(neighbors)
+
+        return ordered_indices
+
+    @staticmethod
+    def triangulate_contours(contours: list[np.ndarray]) -> list[np.ndarray]:
+        """輪郭群を三角形分割して有効三角形リストを返す。"""
+        valid_contours = MeshPipeline.normalize_contours_for_triangulation(contours)
         if not valid_contours:
             return []
 
@@ -953,7 +1068,7 @@ class MeshPipeline:
                     hole_pts=tri_holes_input,
                     mute_log=MeshConfig.TRIWILD_MUTE_LOG,
                 )
-            except Exception:
+            except (ValueError, RuntimeError, FloatingPointError):
                 continue
 
             tri_indices = np.asarray(tri_indices, dtype=np.int64)
@@ -967,7 +1082,11 @@ class MeshPipeline:
             if np.any(tri_indices < 0) or np.any(tri_indices >= len(tri_vertices)):
                 continue
 
-            for tri_index in tri_indices:
+            triangle_order = MeshPipeline.build_triangle_adjacency_order(
+                tri_vertices, tri_indices
+            )
+            for tri_position in triangle_order:
+                tri_index = tri_indices[tri_position]
                 triangle = np.asarray(
                     [
                         tri_vertices[tri_index[0]],
@@ -1222,7 +1341,7 @@ class MeshPipeline:
         def project(point: np.ndarray) -> tuple[float, float]:
             """ワールド座標をプレビュー画像座標へ射影する。"""
             x = plot_offset_x + (max_x - point[0]) * scale
-            y = (plot_offset_y + scaled_height) - (max_y - point[1]) * scale
+            y = plot_offset_y + (max_y - point[1]) * scale
             return float(x), float(y)
 
         image = Image.new("RGBA", (width, height), (18, 20, 24, 255))
@@ -1348,7 +1467,7 @@ class MeshPipeline:
             ring_path = pathops.op(stroked_path, fill_path, pathops.PathOp.DIFFERENCE)
             ring_path.simplify()
             return MeshPipeline.pathops_path_to_contours(ring_path)
-        except Exception:
+        except (ValueError, RuntimeError, FloatingPointError):
             return None
 
     @staticmethod
@@ -1554,12 +1673,98 @@ class MeshPipeline:
         if triangulation_preview is None:
             st.caption(get_text("triangulation_empty", lang))
         else:
-            st.image(triangulation_preview, use_container_width=True)
+            st.image(triangulation_preview, width="stretch")
 
 
 def point_to_np(point: Any) -> np.ndarray:
     """svgelements の点オブジェクトを NumPy 座標へ変換する。"""
     return np.array([float(point.x), float(point.y)], dtype=np.float64)
+
+
+def parse_svg_float(value: Any, default: float) -> float:
+    """SVG属性値を安全に float へ変換する。"""
+    if value is None:
+        return float(default)
+    try:
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return float(default)
+            if text.endswith("%"):
+                parsed = float(text[:-1]) / 100.0
+            else:
+                parsed = float(text)
+        else:
+            parsed = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    if not np.isfinite(parsed):
+        return float(default)
+    return float(parsed)
+
+
+def is_visible_svg_paint(paint: Any, effective_opacity: float) -> bool:
+    """paint が none/透明でない場合に True を返す。"""
+    if effective_opacity <= 1e-9 or paint is None:
+        return False
+    paint_value = getattr(paint, "value", None)
+    if paint_value is None:
+        return False
+    paint_text = str(paint).strip().lower()
+    if paint_text in ("", "none", "transparent"):
+        return False
+    paint_alpha = getattr(paint, "alpha", None)
+    if paint_alpha is None:
+        return True
+    try:
+        return float(paint_alpha) > 0.0
+    except (TypeError, ValueError):
+        return True
+
+
+def resolve_svg_fill_enabled(element: Any) -> bool:
+    """SVG要素が可視 fill を持つかを判定する。"""
+    values = getattr(element, "values", {}) or {}
+    fill = getattr(element, "fill", None)
+    global_opacity = parse_svg_float(values.get("opacity"), 1.0)
+    fill_opacity = parse_svg_float(values.get("fill-opacity"), 1.0)
+    effective_opacity = float(np.clip(global_opacity * fill_opacity, 0.0, 1.0))
+    return is_visible_svg_paint(fill, effective_opacity)
+
+
+def resolve_svg_stroke_style(
+    element: Any,
+) -> tuple[float, Any, Any, float] | None:
+    """SVG要素の stroke スタイルを PathOps 用に解決する。"""
+    values = getattr(element, "values", {}) or {}
+    stroke = getattr(element, "stroke", None)
+    global_opacity = parse_svg_float(values.get("opacity"), 1.0)
+    stroke_opacity = parse_svg_float(values.get("stroke-opacity"), 1.0)
+    effective_opacity = float(np.clip(global_opacity * stroke_opacity, 0.0, 1.0))
+    if not is_visible_svg_paint(stroke, effective_opacity):
+        return None
+
+    stroke_width = parse_svg_float(
+        getattr(element, "stroke_width", values.get("stroke-width")), 0.0
+    )
+    if stroke_width <= 1e-9:
+        return None
+
+    linecap_text = str(values.get("stroke-linecap") or "butt").strip().lower()
+    linejoin_text = str(values.get("stroke-linejoin") or "miter").strip().lower()
+    miter_limit = parse_svg_float(values.get("stroke-miterlimit"), 4.0)
+    if miter_limit < 1.0:
+        miter_limit = 1.0
+
+    linecap = {
+        "round": pathops.LineCap.ROUND_CAP,
+        "square": pathops.LineCap.SQUARE_CAP,
+    }.get(linecap_text, pathops.LineCap.BUTT_CAP)
+    linejoin = {
+        "round": pathops.LineJoin.ROUND_JOIN,
+        "bevel": pathops.LineJoin.BEVEL_JOIN,
+    }.get(linejoin_text, pathops.LineJoin.MITER_JOIN)
+    return float(stroke_width), linecap, linejoin, float(miter_limit)
 
 
 def sample_segment_points(segment: Any, target_length: float) -> list[np.ndarray]:
@@ -1641,6 +1846,109 @@ def path_to_contours(
     return contours
 
 
+def svg_path_to_pathops_path(path_obj: SVGPath, segment_length: float) -> Any | None:
+    """SVGパスをPathOpsの開閉サブパスに変換する。"""
+    path = pathops.Path()
+    has_path = False
+    current_points: list[np.ndarray] = []
+    has_draw_segment = False
+    current_closed = False
+
+    def flush_subpath() -> None:
+        """現在のサブパスをPathOpsへ追加する。"""
+        nonlocal current_points, has_draw_segment, current_closed, has_path
+        if not current_points or not has_draw_segment:
+            current_points = []
+            has_draw_segment = False
+            current_closed = False
+            return
+
+        points = MeshPipeline.dedupe_contour_points(
+            np.asarray(current_points, dtype=np.float64)
+        )
+        if len(points) < 2:
+            current_points = []
+            has_draw_segment = False
+            current_closed = False
+            return
+
+        path.moveTo(float(points[0, 0]), float(points[0, 1]))
+        for point in points[1:]:
+            path.lineTo(float(point[0]), float(point[1]))
+        if current_closed:
+            path.close()
+        has_path = True
+
+        current_points = []
+        has_draw_segment = False
+        current_closed = False
+
+    for segment in path_obj:
+        if isinstance(segment, Move):
+            flush_subpath()
+            current_points = [point_to_np(segment.end)]
+            continue
+
+        if not current_points:
+            start = getattr(segment, "start", None)
+            if start is not None:
+                current_points = [point_to_np(start)]
+            else:
+                end = getattr(segment, "end", None)
+                if end is not None:
+                    current_points = [point_to_np(end)]
+
+        sampled = sample_segment_points(segment, segment_length)
+        if sampled:
+            current_points.extend(sampled)
+            has_draw_segment = True
+        if isinstance(segment, Close):
+            current_closed = True
+
+    flush_subpath()
+    return path if has_path else None
+
+
+def stroke_path_to_contours(
+    path_obj: SVGPath,
+    segment_length: float,
+    stroke_width: float,
+    linecap: Any,
+    linejoin: Any,
+    miter_limit: float,
+) -> list[np.ndarray]:
+    """SVG stroke を輪郭化して有効輪郭列として返す。"""
+    if stroke_width <= 1e-9:
+        return []
+
+    source_path = svg_path_to_pathops_path(path_obj, segment_length)
+    if source_path is None:
+        return []
+
+    try:
+        stroked = pathops.Path()
+        stroked.addPath(source_path)
+        stroked.stroke(
+            width=float(stroke_width),
+            cap=linecap,
+            join=linejoin,
+            miter_limit=float(miter_limit),
+        )
+        try:
+            stroked.simplify()
+        except pathops.UnsupportedVerbError:
+            # round cap/join で CONIC を含む場合は簡約不可なのでそのまま使う。
+            pass
+        return MeshPipeline.pathops_path_to_contours(stroked)
+    except (
+        ValueError,
+        RuntimeError,
+        FloatingPointError,
+        pathops.UnsupportedVerbError,
+    ):
+        return []
+
+
 def svg_bytes_to_contours(
     svg_bytes: bytes,
     segment_length: float,
@@ -1656,13 +1964,27 @@ def svg_bytes_to_contours(
             continue
         if len(path_obj) == 0:
             continue
-        contours.extend(
-            path_to_contours(
-                path_obj=path_obj,
-                segment_length=segment_length,
-                auto_close_open_paths=auto_close_open_paths,
+        if resolve_svg_fill_enabled(element):
+            contours.extend(
+                path_to_contours(
+                    path_obj=path_obj,
+                    segment_length=segment_length,
+                    auto_close_open_paths=auto_close_open_paths,
+                )
             )
-        )
+        stroke_style = resolve_svg_stroke_style(element)
+        if stroke_style is not None:
+            stroke_width, linecap, linejoin, miter_limit = stroke_style
+            contours.extend(
+                stroke_path_to_contours(
+                    path_obj=path_obj,
+                    segment_length=segment_length,
+                    stroke_width=stroke_width,
+                    linecap=linecap,
+                    linejoin=linejoin,
+                    miter_limit=miter_limit,
+                )
+            )
     return contours
 
 
@@ -1929,10 +2251,10 @@ def main() -> None:
     source_preview = build_source_preview(source_contours)
     if source_preview is not None:
         st.subheader(get_text("input_preview_title", lang))
-        st.image(source_preview, use_container_width=True)
+        st.image(source_preview, width="stretch")
 
     if not st.button(
-        get_text("generate_button", lang), type="primary", use_container_width=True
+        get_text("generate_button", lang), type="primary", width="stretch"
     ):
         st.stop()
 
@@ -2038,7 +2360,7 @@ def main() -> None:
         file_name=filename,
         mime="image/png",
         type="primary",
-        use_container_width=True,
+        width="stretch",
     )
 
 
