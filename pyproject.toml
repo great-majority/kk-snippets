@@ -1,0 +1,25 @@
+[project]
+name = "kk-snippets"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "kkloader==0.1.20",
+    "streamlit==1.51.0",
+    "pyvis==0.3.2",
+    "networkx==3.3",
+    "scipy==1.15.3",
+    "fonttools==4.61.1",
+    "fontpens==0.2.4",
+    "wildmeshing==0.4.1",
+    "skia-pathops==0.9.2",
+    "svgelements==1.9.6",
+    "numpy==2.4.4",
+    "pandas==2.3.3",
+    "pillow==12.2.0",
+    "msgpack==1.1.2",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.9",
+]
