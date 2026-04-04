@@ -518,9 +518,11 @@ if uploaded_file is not None:
         selection_mode = st.radio(
             get_text("folder_selection_mode", lang),
             options=["dropdown", "pattern"],
-            format_func=lambda x: get_text("mode_dropdown", lang)
-            if x == "dropdown"
-            else get_text("mode_pattern", lang),
+            format_func=lambda x: (
+                get_text("mode_dropdown", lang)
+                if x == "dropdown"
+                else get_text("mode_pattern", lang)
+            ),
             horizontal=True,
         )
 
@@ -575,9 +577,11 @@ if uploaded_file is not None:
             target_light = st.radio(
                 get_text("target_selection_label", lang),
                 options=["map", "chara"],
-                format_func=lambda x: get_text("map_light", lang)
-                if x == "map"
-                else get_text("chara_light", lang),
+                format_func=lambda x: (
+                    get_text("map_light", lang)
+                    if x == "map"
+                    else get_text("chara_light", lang)
+                ),
                 help=get_text("target_selection_help", lang),
             )
 
