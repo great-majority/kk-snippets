@@ -911,7 +911,9 @@ class TriangleSolverLMReparam:
             u, v, w = self._to_unconstrained(
                 sx_clamped, cx_clamped, cz_clamped, sx_min, sx_span, c_min
             )
-            candidates.append(np.array([float(alpha), u, float(theta), v, w], dtype=np.float64))
+            candidates.append(
+                np.array([float(alpha), u, float(theta), v, w], dtype=np.float64)
+            )
 
         def make_equations(prior):
             def equations(unconstrained_params):
@@ -966,7 +968,9 @@ class TriangleSolverLMReparam:
             return {"reachable": False, "residual": float("inf")}
 
         alpha, u, theta, v, w = best_params
-        sx, sz, cx, cz = self._from_unconstrained(u, v, w, sx_min, sx_max, sx_span, c_min)
+        sx, sz, cx, cz = self._from_unconstrained(
+            u, v, w, sx_min, sx_max, sx_span, c_min
+        )
         eff_x, eff_z = self.effective_scale(sx, sz, theta)
         if eff_x <= 1e-12 or eff_z <= 1e-12:
             return {"reachable": False, "residual": float("inf")}
