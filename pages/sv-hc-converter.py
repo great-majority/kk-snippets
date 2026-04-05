@@ -12,7 +12,7 @@ from kkloader.KoikatuCharaData import BlockData
 
 TRANSLATIONS = {
     "ja": {
-        "title": "ILLGAMESキャラクターコンバータ",
+        "title": "ハニカムシリーズキャラクター変換ツール",
         "description": """
 ハニカム↔サマすく↔アイコミでキャラクターデータを相互変換するツールです。キャラデータ読み込み後、選択したタイトルへキャラ変換を行わうことができます。
 
@@ -53,7 +53,7 @@ TRANSLATIONS = {
         "language_selector": "言語 / Language",
     },
     "en": {
-        "title": "ILLGAMES Character Converter",
+        "title": "Honeycome Series Character Converter",
         "description": """
 This tool allows you to convert character data between Honey Come, Summer Vacation Scramble, and Aicomi. After loading character data, you can convert the character to the selected title.
 
@@ -642,14 +642,7 @@ def ac_to_sv(ac: AicomiCharaData) -> SummerVacationCharaData:
 title = get_text("title", "ja")
 st.set_page_config(page_title=title)
 
-# サイドバーに言語選択を配置
-with st.sidebar:
-    lang = st.selectbox(
-        "Language / 言語",
-        options=["ja", "en"],
-        format_func=lambda x: "日本語" if x == "ja" else "English",
-        index=0,
-    )
+lang = st.session_state.get("lang", "ja")
 
 st.title(get_text("title", lang))
 

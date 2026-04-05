@@ -35,14 +35,7 @@ def get_text(key, lang="ja"):
 title = get_text("title", "ja")
 st.set_page_config(page_title=title)
 
-# サイドバーに言語選択を配置
-with st.sidebar:
-    lang = st.selectbox(
-        "Language / 言語",
-        options=["ja", "en"],
-        format_func=lambda x: "日本語" if x == "ja" else "English",
-        index=0,
-    )
+lang = st.session_state.get("lang", "ja")
 
 st.title(get_text("title", lang))
 
