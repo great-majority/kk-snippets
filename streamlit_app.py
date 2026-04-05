@@ -1,59 +1,85 @@
 import streamlit as st
 
-# ========================================
-# i18n対応: 多言語辞書
-# ========================================
+st.set_page_config(page_title="kk-snippets", layout="wide")
 
-TRANSLATIONS = {
+NAV_TITLES = {
     "ja": {
-        "title": "kk-snippets",
-        "description": """
-illusion/ILLGAMESのゲームに関連するツールを置くページです。
-
-動作の不具合などあれば [@tropical_362827](https://twitter.com/tropical_362827) か [GitHub](https://github.com/great-majority/kk-snippets/issues) に送っていただけると助かります🙇
-
-←のメニューからページを選択してください。
-
-<a href="https://github.com/great-majority/kk-snippets">
-    <img src="https://opengraph.githubassets.com/24d9aa2fc57ba5cc9c57898c8c43138d09b4ed7e71ede99bbe892ec0b7de6ded/great-majority/kk-snippets" alt="githubリンク" width="80%">
-</a>
-""",
+        "home": "ホーム",
+        "sec_koikatsu": "コイカツ関連",
+        "sec_honeycomb": "ハニカム関連",
+        "sec_digcraft": "デジクラ関連",
+        "sec_common": "共通ツール",
+        "ec_to_kk": "コイカツシリーズキャラクター変換ツール",
+        "sv_hc_converter": "ハニカムシリーズキャラクター変換ツール",
+        "sv_chara_trait_editor": "サマすくキャラ特性エディター",
+        "sv_stat": "サマすく行動ログビューア",
+        "dc_calligrapher": "デジクラカリグラファー",
+        "dc_chara_converter": "デジクラキャラクター統一コンバータ",
+        "dc_data_viewer": "デジクラシーンデータビューア",
+        "dc_item_converter": "デジクラ基本形アイテム変換ツール",
+        "chara_data_viewer": "illusion/ILLGAMESキャラ情報表示",
     },
     "en": {
-        "title": "kk-snippets",
-        "description": """
-A collection of tools related to illusion/ILLGAMES titles.
-
-If you find any bugs or strange translations, please let us know via [GitHub Issues](https://github.com/great-majority/kk-snippets/issues) or [@tropical_362827](https://twitter.com/tropical_362827).🙇
-
-Please select a page from the menu on the left.
-
-<a href="https://github.com/great-majority/kk-snippets">
-    <img src="https://opengraph.githubassets.com/24d9aa2fc57ba5cc9c57898c8c43138d09b4ed7e71ede99bbe892ec0b7de6ded/great-majority/kk-snippets" alt="GitHub link" width="80%">
-</a>
-""",
+        "home": "Home",
+        "sec_koikatsu": "Koikatsu",
+        "sec_honeycomb": "Honeycome",
+        "sec_digcraft": "Digital Craft",
+        "sec_common": "Common Tools",
+        "ec_to_kk": "Koikatsu Character Data Converter",
+        "sv_hc_converter": "Honeycome Series Character Converter",
+        "sv_chara_trait_editor": "Summer Vacation Scramble Trait Editor",
+        "sv_stat": "Summer Vacation Scramble Action Log Viewer",
+        "dc_calligrapher": "Digital Craft Calligrapher",
+        "dc_chara_converter": "Digital Craft Character Converter",
+        "dc_data_viewer": "Digital Craft Scene Data Viewer",
+        "dc_item_converter": "Digital Craft Primitive Item Converter",
+        "chara_data_viewer": "illusion/ILLGAMES Character Data Viewer",
     },
 }
 
-
-def get_text(key, lang="ja"):
-    """指定した言語のテキストを取得"""
-    return TRANSLATIONS.get(lang, TRANSLATIONS["ja"]).get(key, key)
-
-
-# ページ設定とタイトル
-title = get_text("title", "ja")
-st.set_page_config(page_title=title)
-
-# サイドバーに言語選択を配置
 with st.sidebar:
     lang = st.selectbox(
         "Language / 言語",
         options=["ja", "en"],
         format_func=lambda x: "日本語" if x == "ja" else "English",
         index=0,
+        key="lang",
     )
 
-st.title(get_text("title", lang))
+t = NAV_TITLES.get(lang, NAV_TITLES["ja"])
 
-st.markdown(get_text("description", lang), unsafe_allow_html=True)
+pg = st.navigation(
+    {
+        "": [
+            st.Page("pages/home.py", title=t["home"], default=True),
+            st.Page(
+                "pages/convert-to-aicomi.py",
+                title="convert-to-aicomi",
+                visibility="hidden",
+            ),  # type: ignore[call-arg]
+        ],
+        t["sec_koikatsu"]: [
+            st.Page("pages/ec-to-kk.py", title=t["ec_to_kk"]),
+        ],
+        t["sec_honeycomb"]: [
+            st.Page("pages/sv-hc-converter.py", title=t["sv_hc_converter"]),
+            st.Page("pages/sv-chara-trait-editor.py", title=t["sv_chara_trait_editor"]),
+            st.Page("pages/sv-stat.py", title=t["sv_stat"]),
+        ],
+        t["sec_digcraft"]: [
+            st.Page("pages/digital-craft-calligrapher.py", title=t["dc_calligrapher"]),
+            st.Page(
+                "pages/digital-craft-character-converter.py",
+                title=t["dc_chara_converter"],
+            ),
+            st.Page("pages/digital-craft-data-viewer.py", title=t["dc_data_viewer"]),
+            st.Page(
+                "pages/digital-craft-item-converter.py", title=t["dc_item_converter"]
+            ),
+        ],
+        t["sec_common"]: [
+            st.Page("pages/chara-data-viewer.py", title=t["chara_data_viewer"]),
+        ],
+    }
+)
+pg.run()

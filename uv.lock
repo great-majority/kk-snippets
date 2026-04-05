@@ -503,7 +503,7 @@ requires-dist = [
     { name = "pyvis", specifier = "==0.3.2" },
     { name = "scipy", specifier = "==1.15.3" },
     { name = "skia-pathops", specifier = "==0.9.2" },
-    { name = "streamlit", specifier = "==1.51.0" },
+    { name = "streamlit", specifier = ">=1.55.0" },
     { name = "svgelements", specifier = "==1.9.6" },
     { name = "wildmeshing", specifier = "==0.4.1" },
 ]
@@ -1272,7 +1272,7 @@ wheels = [
 
 [[package]]
 name = "streamlit"
-version = "1.51.0"
+version = "1.56.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "altair" },
@@ -1294,9 +1294,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "watchdog", marker = "sys_platform != 'darwin'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/59/6d/327ddd5fc35fcf2aeecb4040668337f5565a1c6c95b1e892b8bfd4bb9031/streamlit-1.51.0.tar.gz", hash = "sha256:1e742a9c0b698f466c6f5bf58d333beda5a1fbe8de660743976791b5c1446ef6", size = 9742904, upload_time = "2025-10-29T17:07:39.082Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/03/85/7c669b3a1336d34ef39fa9760fbd343185f3b15db2ad0838fd78423d1c7f/streamlit-1.56.0.tar.gz", hash = "sha256:1176acfa89ae1318b79078e8efe689a9d02e8d58e325c00fc0e55fa2f3fe8d6a", size = 8559239, upload_time = "2026-03-31T22:29:38.59Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/39/60/868371b6482ccd9ef423c6f62650066cf8271fdb2ee84f192695ad6b7a96/streamlit-1.51.0-py3-none-any.whl", hash = "sha256:4008b029f71401ce54946bb09a6a3e36f4f7652cbb48db701224557738cfda38", size = 10171702, upload_time = "2025-10-29T17:07:35.97Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/91/cb6f13a89e376ef179309d74f37a70ea0041d5e4b5ba5c4836dbf6e020ad/streamlit-1.56.0-py3-none-any.whl", hash = "sha256:8677a335734a30a51bc57ad0ec910e365d95f7c456fc02c60032927cd0729dc5", size = 9052089, upload_time = "2026-03-31T22:29:36.342Z" },
 ]
 
 [[package]]

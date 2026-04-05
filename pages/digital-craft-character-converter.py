@@ -54,7 +54,7 @@ TRANSLATIONS = {
         "failed_table_title": "変換失敗一覧",
     },
     "en": {
-        "title": "Digital Craft Character Unifier",
+        "title": "Digital Craft Unified Chara Converter",
         "subtitle": "Unify all characters in a scene to Honeycome / Summer Vacation Scramble / Aicomi in one batch, greatly reducing the effort of replacing characters.",
         "usage_title": "How to use",
         "usage_content": """
@@ -725,13 +725,7 @@ def main() -> None:
     page_title = get_text("title", "ja")
     st.set_page_config(page_title=page_title, page_icon=":arrows_counterclockwise:")
 
-    with st.sidebar:
-        lang = st.selectbox(
-            "Language / 言語",
-            options=["ja", "en"],
-            format_func=lambda x: "日本語" if x == "ja" else "English",
-            index=0,
-        )
+    lang = st.session_state.get("lang", "ja")
 
     st.title(get_text("title", lang))
     st.write(get_text("subtitle", lang))
