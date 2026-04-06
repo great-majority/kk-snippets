@@ -3633,14 +3633,20 @@ def main():
             if render_mode_key == "mesh":
                 plane_preset = st.selectbox(
                     get_text("triangle_type_label", lang),
-                    options=[get_text("triangle_map", lang), get_text("triangle_chara", lang)],
+                    options=[
+                        get_text("triangle_map", lang),
+                        get_text("triangle_chara", lang),
+                    ],
                     index=0,
                     help=get_text("triangle_type_help", lang),
                 )
             else:
                 plane_preset = st.selectbox(
                     get_text("plane_type_label", lang),
-                    options=[get_text("plane_map", lang), get_text("plane_chara", lang)],
+                    options=[
+                        get_text("plane_map", lang),
+                        get_text("plane_chara", lang),
+                    ],
                     index=0,
                     help=get_text("plane_type_help", lang),
                 )
@@ -3698,7 +3704,9 @@ def main():
                         get_text("triangle_map", lang),
                     )
                     plane_preset_key = "平面(マップ)" if is_map else "平面(キャラ)"
-                    triangle_preset_key = "三角形(マップ)" if is_map else "三角形(キャラ)"
+                    triangle_preset_key = (
+                        "三角形(マップ)" if is_map else "三角形(キャラ)"
+                    )
                     plane_settings = PLANE_PRESETS[plane_preset_key]
                     triangle_settings = TRIANGLE_PRESETS[triangle_preset_key]
                     resolved_plane_template = {
