@@ -5,7 +5,6 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 from kkloader import SummerVacationCharaData as svcd
 from msgpack import packb, unpackb
 from pyvis.network import Network
@@ -555,7 +554,7 @@ if file is not None:
             }
         """)
         html = net.generate_html()
-        components.html(html, height=610)
+        st.iframe(html, height=610)
 
     with tab_emotion:
         emotions = {
@@ -621,4 +620,4 @@ if file is not None:
             }
         """)
         html = net_emotion.generate_html()
-        components.html(html, height=610)
+        st.iframe(html, height=610)
