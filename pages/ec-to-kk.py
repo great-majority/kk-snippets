@@ -15,17 +15,18 @@ TRANSLATIONS = {
     "ja": {
         "title": "コイカツシリーズキャラクター変換ツール",
         "description": """
-コイカツ、コイカツサンシャイン、エモーションクリエイターズのキャラクターを相互変換するツールです。
+コイカツ↔コイカツサンシャイン↔エモーションクリエイターズのキャラクターを相互変換するツールです。
 
 **⚠️注意事項**: 完全互換ではありません。変換前のデータはバックアップしておきましょう。
 """,
         "expander_title": "変換時の注意とデータ差分",
         "expander_content": """
 - 各シリーズで互換性のない部分は、そのまま削除するか、既定値で補完します。
-- KK/KKS → EC では `Coordinate[0]` のみを採用します。ほかのコーデは失われます。
-- EC → KK/KKS では 1つのコーデを複製して出力します。必要なら変換後に各コーデを編集してください。
+- KK/KKS → EC では一番目のコーディネートを採用します。
+- EC → KK/KKS では 1つのコーデを複製して出力します。
 - KK ↔ KKS では `Coordinate` はそのまま保持し、主にヘッダ、`Parameter`、`Custom`、`Status`、`About` を調整します。
-- `KKEx` はチェックボックスを有効にするとそのままコピーしますが、互換性は保証しません。
+- `KKEx` はチェックボックスを有効にするとそのままコピーします。MOD環境が双方で異なっている場合、読み込めない可能性があります。
+  - どのMODを使っているのかは [こちらのページ](/chara-data-viewer) を使って調べることができます。
 
 | 項目 | エモーションクリエイターズ | コイカツ | コイカツサンシャイン |
 | --- | --- | --- | --- |
@@ -50,24 +51,25 @@ TRANSLATIONS = {
         "target_ec": "エモーションクリエイターズ",
         "target_kk": "コイカツ",
         "target_kks": "コイカツサンシャイン",
-        "copy_kkex": "KKExブロックをそのままコピーする",
+        "copy_kkex": "MODデータ(KKExブロック)をそのままコピーする",
         "success_convert": "正常にデータを変換しました。",
         "download_button": "{target}のキャラとしてダウンロード",
     },
     "en": {
         "title": "Koikatsu Series Character Converter",
         "description": """
-A tool to convert characters between Koikatsu, Koikatsu Sunshine, and Emotion Creators.
+A tool to convert characters between Koikatsu ↔ Koikatsu Sunshine ↔ Emotion Creators.
 
 **⚠️Caution**: This is not a perfect round-trip conversion. Back up your data before converting.
 """,
         "expander_title": "Conversion Notes and Data Differences",
         "expander_content": """
 - Parts that are not compatible between series are either removed or filled with default values.
-- For KK/KKS → EC, only `Coordinate[0]` is used. Other coordinates are discarded.
-- For EC → KK/KKS, the single EC coordinate is duplicated. Edit each outfit after conversion if needed.
+- For KK/KKS → EC, the first coordinate is used.
+- For EC → KK/KKS, the single EC coordinate is duplicated.
 - For KK ↔ KKS, `Coordinate` is preserved as-is. The converter mainly adjusts the header, `Parameter`, `Custom`, `Status`, and `About`.
-- `KKEx` can be copied as-is via the checkbox, but compatibility is not guaranteed.
+- `KKEx` can be copied as-is via the checkbox. If the MOD environment differs between the two sides, it may fail to load.
+  - You can check which MODs are used with [this page](/chara-data-viewer).
 
 | Item | Emotion Creators | Koikatsu | Koikatsu Sunshine |
 | --- | --- | --- | --- |
@@ -92,7 +94,7 @@ A tool to convert characters between Koikatsu, Koikatsu Sunshine, and Emotion Cr
         "target_ec": "Emotion Creators",
         "target_kk": "Koikatsu",
         "target_kks": "Koikatsu Sunshine",
-        "copy_kkex": "Copy KKEx block as-is",
+        "copy_kkex": "Copy MOD data (KKEx block).",
         "success_convert": "Data converted successfully.",
         "download_button": "Download as {target} character",
     },
@@ -486,23 +488,34 @@ def kk_to_ec(kk, copy_kkex=False):
     assert isinstance(kk, KoikatuCharaData)
 
     default_ec_hl_x = 0.5
-    default_ec_hl_scale = 1.0
-    default_ec_hide_timing = 0
-    default_ec_mouth_open_min = 0.0
+    default_ec_hl_down_y = 0.75
+    default_ec_hl_scale = 0.5
+    default_ec_hide_timing = 1
+    default_ec_personality = 0
+    default_ec_ex_type = 0
+    default_ec_mouth_open_min = 0
+    default_ec_mouth_open_max = 1
+    default_ec_mouth_ptn = 0
+    default_ec_eyes_look_ptn = 0
+    default_ec_neck_look_ptn = 0
+    default_ec_visible_son_always = True
     default_ec_enable_son_direction = False
-    default_ec_son_direction_x = 0.0
-    default_ec_son_direction_y = 0.0
+    default_ec_son_direction_x = 0
+    default_ec_son_direction_y = 0
+    default_ec_enable_shape_hand = [False, False]
+    default_ec_shape_hand_ptn = [2, 2, [0, 0, 0, 0]]
+    default_ec_shape_hand_blend_value = [0, 0]
 
     ec = EmocreCharaData()
 
     ec.image = kk.image
-    ec.product_no = kk.product_no
+    ec.product_no = 200
     ec.header = "【EroMakeChara】".encode("utf-8")
-    ec.version = "0.0.0".encode("ascii")
+    ec.version = "0.0.1".encode("ascii")
     ec.language = 0
-    ec.userid = str(uuid.uuid4()).encode("utf-8")
-    ec.dataid = str(uuid.uuid4()).encode("utf-8")
-    ec.packages = []
+    ec.userid = str(uuid.uuid4()).encode("ascii")
+    ec.dataid = str(uuid.uuid4()).encode("ascii")
+    ec.packages = [0]
     ec.blockdata = copy.deepcopy(kk.blockdata)
     ec.serialized_lstinfo_order = copy.deepcopy(ec.blockdata)
     ec.original_lstinfo_order = copy.deepcopy(ec.blockdata)
@@ -511,17 +524,24 @@ def kk_to_ec(kk, copy_kkex=False):
     ec.Parameter = copy.deepcopy(kk.Parameter)
     ec.Status = copy.deepcopy(kk.Status)
 
-    if "About" in kk.blockdata:
-        ec.About = copy.deepcopy(kk.About)
+    _remove_block(ec, "About")
     if "KKEx" in kk.blockdata and copy_kkex:
         ec.KKEx = copy.deepcopy(kk.KKEx)
 
-    ec.Custom["face"]["pupilHeight"] /= 1.08
+    ec.Custom.version = "0.0.0"
+    ec.Custom["face"]["version"] = "0.0.1"
+    ec.Custom["face"]["pupilHeight"] *= 0.92
     ec.Custom["face"]["hlUpY"] = ec.Custom["face"]["hlUpY"] / 2 + 0.25
     ec.Custom["face"]["hlUpX"] = default_ec_hl_x
     ec.Custom["face"]["hlDownX"] = default_ec_hl_x
+    ec.Custom["face"]["hlDownY"] = default_ec_hl_down_y
     ec.Custom["face"]["hlUpScale"] = default_ec_hl_scale
     ec.Custom["face"]["hlDownScale"] = default_ec_hl_scale
+    ec.Custom["body"]["version"] = "0.0.0"
+    ec.Custom["body"]["typeBone"] = 0
+    ec.Custom["hair"]["version"] = "0.0.1"
+    for part in ec.Custom["hair"]["parts"]:
+        part["noShake"] = False
 
     coordinate = copy.deepcopy(
         kk.Coordinate.data[0]
@@ -533,13 +553,16 @@ def kk_to_ec(kk, copy_kkex=False):
 
     clothes.pop("hideBraOpt", None)
     clothes.pop("hideShortsOpt", None)
-    if len(clothes["parts"]) > 8:
-        clothes["parts"] = clothes["parts"][:8]
+    if len(clothes["parts"]) >= 2:
+        del clothes["parts"][-2]
     for part in clothes["parts"]:
         part["emblemeId"] = [part.pop("emblemeId", 0), part.pop("emblemeId2", 0)]
+        part["hideOpt"] = [False, False]
+        part["sleevesType"] = 0
 
     for part in accessory["parts"]:
         part["hideTiming"] = default_ec_hide_timing
+        part["noShake"] = False
 
     ec.Coordinate = Coordinate(data=None, version="0.0.1")
     ec.Coordinate.data = {
@@ -547,14 +570,36 @@ def kk_to_ec(kk, copy_kkex=False):
         "accessory": accessory,
     }
 
-    ec.Parameter["fullname"] = _build_ec_fullname(ec.Parameter)
+    ec.Parameter.version = "0.0.0"
+    ec.Parameter["version"] = "0.0.0"
+    ec.Parameter["fullname"] = " ".join(
+        [str(kk.Parameter["lastname"]), str(kk.Parameter["firstname"])]
+    )
     for field in EC_PARAMETER_FIELDS_REMOVED_BY_KK:
         ec.Parameter.data.pop(field, None)
+    ec.Parameter["personality"] = default_ec_personality
+    ec.Parameter["exType"] = default_ec_ex_type
 
+    ec.Status.version = "0.0.1"
+    ec.Status["version"] = "0.0.1"
+    ec.Status["clothesState"] = b"\x00" * 8
+    ec.Status["eyesBlink"] = True
+    ec.Status["mouthPtn"] = default_ec_mouth_ptn
     ec.Status["mouthOpenMin"] = default_ec_mouth_open_min
+    ec.Status["mouthOpenMax"] = default_ec_mouth_open_max
+    ec.Status["mouthFixed"] = False
+    ec.Status["eyesLookPtn"] = default_ec_eyes_look_ptn
+    ec.Status["neckLookPtn"] = default_ec_neck_look_ptn
+    ec.Status["visibleSonAlways"] = default_ec_visible_son_always
     ec.Status["enableSonDirection"] = default_ec_enable_son_direction
     ec.Status["sonDirectionX"] = default_ec_son_direction_x
     ec.Status["sonDirectionY"] = default_ec_son_direction_y
+    ec.Status["enableShapeHand"] = copy.deepcopy(default_ec_enable_shape_hand)
+    ec.Status["shapeHandPtn"] = copy.deepcopy(default_ec_shape_hand_ptn)
+    ec.Status["shapeHandBlendValue"] = copy.deepcopy(default_ec_shape_hand_blend_value)
+    ec.Status.data.pop("coordinateType", None)
+    ec.Status.data.pop("backCoordinateType", None)
+    ec.Status.data.pop("shoesType", None)
 
     _apply_kkex_policy(ec, copy_kkex)
 
@@ -655,7 +700,7 @@ def main():
     )
     copy_kkex = False
     if "KKEx" in chara.blockdata:
-        copy_kkex = st.checkbox(get_text("copy_kkex", lang), value=False)
+        copy_kkex = st.checkbox(get_text("copy_kkex", lang), value=True)
     converted = _convert_character(
         chara,
         source_type,

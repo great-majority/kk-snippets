@@ -11,7 +11,7 @@ illusion/ILLGAMESのゲームに関連するツールを置くページです。
 ←のメニューからページを選択してください。
 
 <a href="https://github.com/great-majority/kk-snippets">
-    <img src="https://opengraph.githubassets.com/24d9aa2fc57ba5cc9c57898c8c43138d09b4ed7e71ede99bbe892ec0b7de6ded/great-majority/kk-snippets" alt="githubリンク" width="80%">
+    <img src="https://opengraph.githubassets.com/24d9aa2fc57ba5cc9c57898c8c43138d09b4ed7e71ede99bbe892ec0b7de6ded/great-majority/kk-snippets" alt="githubリンク" width="50%">
 </a>
 """,
     },
@@ -25,7 +25,7 @@ If you find any bugs or strange translations, please let us know via [GitHub Iss
 Please select a page from the menu on the left.
 
 <a href="https://github.com/great-majority/kk-snippets">
-    <img src="https://opengraph.githubassets.com/24d9aa2fc57ba5cc9c57898c8c43138d09b4ed7e71ede99bbe892ec0b7de6ded/great-majority/kk-snippets" alt="GitHub link" width="80%">
+    <img src="https://opengraph.githubassets.com/24d9aa2fc57ba5cc9c57898c8c43138d09b4ed7e71ede99bbe892ec0b7de6ded/great-majority/kk-snippets" alt="GitHub link" width="50%">
 </a>
 """,
     },
