@@ -2258,13 +2258,7 @@ def main() -> None:
         layout="wide",
     )
 
-    with st.sidebar:
-        lang = st.selectbox(
-            get_text("language_label", "ja"),
-            options=["ja", "en"],
-            format_func=lambda value: "日本語" if value == "ja" else "English",
-            index=0,
-        )
+    lang = st.session_state.get("lang", "ja")
 
     st.title(f"🧩 {get_text('title', lang)}")
     st.caption(get_text("subtitle", lang))
