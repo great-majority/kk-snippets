@@ -40,6 +40,7 @@ TRANSLATIONS = {
 """,
         "file_uploader": "コイカツ/コイカツサンシャイン/エモクリのキャラクター画像を選択",
         "error_load": "ファイルの読み込みに失敗しました。未対応のファイルです。",
+        "error_corrupted_header": "ファイルのヘッダが破損しています。別のファイルを試してください。",
         "error_unsupported": "このヘッダのファイルには対応していません:",
         "header_label": "ヘッダ:",
         "name_label": "キャラクター名:",
@@ -83,6 +84,7 @@ A tool to convert characters between Koikatsu ↔ Koikatsu Sunshine ↔ Emotion 
 """,
         "file_uploader": "Select a character image (Koikatsu / Koikatsu Sunshine / Emotion Creators)",
         "error_load": "Failed to load file. Unsupported file format.",
+        "error_corrupted_header": "The file header is corrupted. Please try a different file.",
         "error_unsupported": "This header file is not supported:",
         "header_label": "Header:",
         "name_label": "Character name:",
@@ -673,7 +675,11 @@ def main():
         st.error(get_text("error_load", lang), icon="🚨")
         st.stop()
 
-    header = header_info.header.decode("utf-8")
+    try:
+        header = header_info.header.decode("utf-8")
+    except UnicodeDecodeError:
+        st.error(get_text("error_corrupted_header", lang), icon="🚨")
+        st.stop()
     source_type_map = {
         "【EroMakeChara】": "EC",
         "【KoiKatuChara】": "KK",

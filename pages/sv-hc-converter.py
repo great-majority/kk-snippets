@@ -38,6 +38,7 @@ TRANSLATIONS = {
 """,
         "file_uploader": "サマすく/ハニカム/アイコミのキャラ画像を選択",
         "error_load": "ファイルの読み込みに失敗しました。未対応のファイルです。",
+        "error_corrupted_header": "ファイルのヘッダが破損しています。別のファイルを試してください。",
         "success_load": "正常にデータを読み込めました。",
         "error_unsupported": "このヘッダのファイルには対応していません:",
         "file_is_hc": "このファイルは **ハニカム** のキャラデータです。",
@@ -79,6 +80,7 @@ This tool allows you to convert character data between Honey Come, Summer Vacati
 """,
         "file_uploader": "Select a character image (Summer Vacation Scramble / Honey Come / Aicomi)",
         "error_load": "Failed to load file. Unsupported file format.",
+        "error_corrupted_header": "The file header is corrupted. Please try a different file.",
         "success_load": "Data loaded successfully.",
         "error_unsupported": "This header file is not supported:",
         "file_is_hc": "This file is a **Honey Come** character.",
@@ -667,7 +669,11 @@ if file is not None:
 
     st.success(get_text("success_load", lang), icon="✅")
 
-    header = kch.header.decode("utf-8")
+    try:
+        header = kch.header.decode("utf-8")
+    except UnicodeDecodeError:
+        st.error(get_text("error_corrupted_header", lang), icon="🚨")
+        st.stop()
 
     if header not in ["【HCChara】", "【SVChara】", "【ACChara】"]:
         st.error(f"{get_text('error_unsupported', lang)} {header}", icon="🚨")
