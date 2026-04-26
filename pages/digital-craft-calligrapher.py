@@ -147,6 +147,7 @@ TRANSLATIONS = {
         "error_no_text": "テキストが入力されていません",
         "generating": "シーンを生成中...",
         "success_generate": "生成完了！ ({count} 個の平面)",
+        "dot_plane_limit_error": "推定平面数が上限を超えています。推定 {count:,} 個 / 上限 {limit:,} 個。文字数を減らすか、一文字あたり細かさを下げるか、アンチエイリアスをOFFにして平面結合をONにしてください。",
         "preview_title": "文字生成イメージ",
         "original_image": "元のテキスト画像",
         "pixel_data": "ピクセルデータ ({width}×{height})",
@@ -289,6 +290,7 @@ I wrote a blog post explaining it [here](https://qiita.com/tropical-362827/items
         "error_no_text": "No text entered",
         "generating": "Generating scene...",
         "success_generate": "Generation complete! ({count} planes)",
+        "dot_plane_limit_error": "Estimated plane count exceeds the limit. Estimated {count:,} / limit {limit:,}. Reduce the text length or resolution, or turn antialiasing off and enable plane merging.",
         "preview_title": "Text generation preview",
         "original_image": "Original text image",
         "pixel_data": "Pixel data ({width}×{height})",
@@ -323,6 +325,7 @@ class DotRenderConfig:
     FONT_SIZE = 200
     CHAR_CANVAS_PADDING = 5
     DEFAULT_RESOLUTION = 100
+    MAX_PLANE_COUNT = 60_000
 
 
 class MeshRenderConfig:
@@ -1411,6 +1414,157 @@ class DotRenderPipeline:
         return planes, len(runs)
 
     @staticmethod
+    def count_planes_from_pixels(
+        pixels,
+        color=None,
+        edge_color=None,
+        antialias=True,
+        merge_horizontal=False,
+        merge_color_threshold=0.05,
+    ):
+        """平面オブジェクトを作らず、pixels_to_planes と同じ規則で平面数を数える。"""
+        height, width = pixels.shape
+        runs = []
+        runs_by_row = [[] for _ in range(height)]
+        if color is None:
+            color = {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0}
+        if edge_color is None:
+            edge_color = {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0}
+
+        effective_threshold = 1 if antialias else 128
+
+        def flush_run(run_start, run_end, run_color, row_index):
+            run_info = {
+                "start": run_start,
+                "end": run_end,
+                "row": row_index,
+                "color": run_color,
+            }
+            runs.append(run_info)
+            runs_by_row[row_index].append(run_info)
+
+        for row in range(height):
+            run_start = None
+            run_color = None
+            run_end = None
+
+            for col in range(width):
+                pixel_value = pixels[row, col]
+                if pixel_value >= effective_threshold:
+                    shaded_color = DotRenderPipeline.resolve_pixel_color(
+                        pixel_value, color, edge_color, antialias
+                    )
+                    if run_start is None:
+                        run_start = col
+                        run_end = col
+                        run_color = shaded_color
+                    elif merge_horizontal and DotRenderPipeline.colors_close(
+                        shaded_color, run_color, merge_color_threshold
+                    ):
+                        run_end = col
+                    else:
+                        flush_run(run_start, run_end, run_color, row)
+                        run_start = col
+                        run_end = col
+                        run_color = shaded_color
+                elif run_start is not None:
+                    flush_run(run_start, run_end, run_color, row)
+                    run_start = None
+                    run_end = None
+                    run_color = None
+
+            if run_start is not None:
+                flush_run(run_start, run_end, run_color, row)
+
+        if not merge_horizontal:
+            return len(runs), len(runs)
+
+        def color_key(color_value):
+            return (
+                color_value["r"],
+                color_value["g"],
+                color_value["b"],
+                color_value["a"],
+            )
+
+        plane_count = 0
+        active_runs = {}
+        for row in range(height):
+            row_runs = runs_by_row[row]
+            next_active = {}
+            for run in row_runs:
+                key = (run["start"], run["end"], color_key(run["color"]))
+                if key in active_runs and active_runs[key]["row_end"] == row - 1:
+                    active_runs[key]["row_end"] = row
+                    next_active[key] = active_runs[key]
+                else:
+                    next_active[key] = {
+                        "start": run["start"],
+                        "end": run["end"],
+                        "color": run["color"],
+                        "row_start": row,
+                        "row_end": row,
+                    }
+
+            for key in active_runs:
+                if key not in next_active:
+                    plane_count += 1
+            active_runs = next_active
+
+        plane_count += len(active_runs)
+        return plane_count, len(runs)
+
+    @staticmethod
+    def estimate_plane_counts(
+        text,
+        font_size,
+        per_char_resolution,
+        color=None,
+        edge_color=None,
+        antialias=True,
+        font_path=None,
+        merge_horizontal=False,
+        merge_color_threshold=0.05,
+    ):
+        """ドットモード生成前に最終平面数を見積もる。"""
+        font = load_font(font_size, font_path)
+        canvas_width, canvas_height = DotRenderPipeline.compute_canvas_size(
+            text, font, DotRenderConfig.CHAR_CANVAS_PADDING
+        )
+        effective_threshold = 1 if antialias else 128
+        char_pixels_list, _, raw_plane_count = DotRenderPipeline.build_char_pixels(
+            text,
+            font,
+            font_size,
+            per_char_resolution,
+            canvas_width,
+            canvas_height,
+            effective_threshold,
+        )
+
+        plane_count = 0
+        plane_count_horizontal = 0
+        for char_pixels in char_pixels_list:
+            char_plane_count, char_horizontal_count = (
+                DotRenderPipeline.count_planes_from_pixels(
+                    np.fliplr(char_pixels),
+                    color=color,
+                    edge_color=edge_color,
+                    antialias=antialias,
+                    merge_horizontal=merge_horizontal,
+                    merge_color_threshold=merge_color_threshold,
+                )
+            )
+            plane_count += char_plane_count
+            plane_count_horizontal += char_horizontal_count
+
+        return {
+            "plane_count": plane_count,
+            "plane_count_horizontal": plane_count_horizontal,
+            "raw_plane_count": raw_plane_count,
+        }
+
+    @staticmethod
     def generate_text_scene(
         text,
         template_scene,
@@ -1645,6 +1799,26 @@ class DotRenderPipeline:
         lang,
     ):
         edge_color = hex_to_color(dot_settings["edge_color_hex"])
+        plane_count_estimate = DotRenderPipeline.estimate_plane_counts(
+            text=text_input,
+            font_size=font_size,
+            per_char_resolution=layout["grid_height"],
+            color=color,
+            edge_color=edge_color,
+            antialias=dot_settings["antialias"],
+            font_path=selected_font,
+            merge_horizontal=dot_settings["merge_horizontal"],
+            merge_color_threshold=dot_settings["merge_color_threshold"],
+        )
+        if plane_count_estimate["plane_count"] > DotRenderConfig.MAX_PLANE_COUNT:
+            st.error(
+                get_text("dot_plane_limit_error", lang).format(
+                    count=plane_count_estimate["plane_count"],
+                    limit=DotRenderConfig.MAX_PLANE_COUNT,
+                )
+            )
+            st.stop()
+
         with st.spinner(get_text("generating", lang)):
             (
                 scene,

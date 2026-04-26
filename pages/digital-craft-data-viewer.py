@@ -23,6 +23,7 @@ TRANSLATIONS = {
         "file_uploader_help": "デジタルクラフトのシーンデータ（.png）をアップロードしてください",
         "success_load": "シーンデータを読み込みました",
         "error_load": "ファイルの読み込みに失敗しました。シーンデータではない可能性があります。",
+        "error_corrupted_header": "ファイルのヘッダが破損しています。",
         "info_upload": "シーンデータ（.png）をアップロードしてください。",
         "scene_info_title": "シーン情報",
         "scene_title": "タイトル",
@@ -81,6 +82,7 @@ A tool to display and aggregate information contained in Digital Craft/Honey Com
         "file_uploader_help": "Please upload a Digital Craft/Honey Come scene data (.png)",
         "success_load": "Scene data loaded successfully",
         "error_load": "Failed to load file. It may not be a scene data file.",
+        "error_corrupted_header": "The file header is corrupted.",
         "info_upload": "Please upload a scene data (.png).",
         "scene_info_title": "Scene Information",
         "scene_title": "Title",
@@ -356,7 +358,10 @@ def set_character_image(chara, name="", scene_title=""):
     """
     header = getattr(chara, "header", b"")
     if isinstance(header, bytes):
-        header = header.decode("utf-8")
+        try:
+            header = header.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ValueError("corrupted_header")
 
     # 接尾辞なしの GameParameter と GameInfo を削除
     for block_name in ["GameParameter", "GameInfo"]:
@@ -445,7 +450,10 @@ def analyze_scene(hs):
             if chara:
                 header = getattr(chara, "header", "Unknown")
                 if isinstance(header, bytes):
-                    header = header.decode("utf-8")
+                    try:
+                        header = header.decode("utf-8")
+                    except UnicodeDecodeError:
+                        header = "(corrupted)"
 
                 # 名前を取得
                 name = "Unknown"
@@ -602,7 +610,11 @@ if uploaded_file is not None:
                 col3.write(anime_display if anime_display else "-")
                 # headerに応じた画像をセットしてからバイト化
                 chara = c["data"]
-                set_character_image(chara, c["name"], hs.title or "")
+                try:
+                    set_character_image(chara, c["name"], hs.title or "")
+                except ValueError:
+                    col4.error(get_text("error_corrupted_header", lang))
+                    continue
                 chara_bytes = bytes(chara)
                 filename = f"{c['name'] or 'character'}_{i}.png"
                 col4.download_button(
