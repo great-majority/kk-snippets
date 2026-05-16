@@ -3752,7 +3752,7 @@ def main():
         )
         st.caption(get_text("text_size_help", lang))
         with st.expander(get_text("text_size_example", lang), expanded=False):
-            st.markdown("![font size example](https://i.imgur.com/y04URY3.jpeg)")
+            st.markdown("![font size example](https://i.imgur.com/wbhZ8Gd.jpeg)")
 
         st.markdown("---")
 
