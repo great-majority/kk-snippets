@@ -22,12 +22,17 @@ from scipy.optimize import least_squares
 TRANSLATIONS = {
     "ja": {
         "title": "デジクラカリグラファー",
-        "subtitle": "テキストをデジタルクラフトのシーン内で平面を並べて再現します。ダウンロードしたシーンをインポートして使えます。",
+        "subtitle": """テキストをデジタルクラフトのシーン内に置くことができます。     
+
+- 文字を四角形の平面を並べて作る **ドットモード**
+- 文字を滑らかな曲線として作る **メッシュモード**
+
+の2つのモードがあります。""",
         "qa_title": "Q&A",
         "qa_content": """
-#### 文字を入れると重い！
+#### 文字を入れると動作が重くなる！
 
-**アンチエイリアス** をOFFにし、 **横方向の平面結合** を有効にすると最も平面の数が小さくなります。
+ドットモードの状態で **アンチエイリアス** をOFFにし、 **横方向の平面結合** を有効にすると最も平面の数が小さくなります。
 
 他にも **一文字あたり細かさ**を下げることで平面数が減りますが、文字の解像度が下がるので可読性も悪くなってしまいます。
 どうしても平面数を下げたければこのパラメータを調整していい塩梅を探してみてください。
@@ -40,10 +45,16 @@ TRANSLATIONS = {
 
 ドットは平面を整列させることで文字を表現し、メッシュでは三角形ポリゴンを柔軟に敷き詰めて文字を表現します。
 
+<div style="text-align: center; margin: 1.5em 0"><img src="https://imgur.com/FHjmBkb.png" width=50%><br><small>左がメッシュモード、右がドットモードです</small></div>
+
 - ドットモードは処理が早く、生成後のアイテム数が少ないため動作が軽い一方、文字の縁がギザギザします。
 - メッシュモードは処理に時間がかかりますが、文字の滑らかな輪郭をそのまま表現することができます。
 
 シーン中に小さく表示できればよい程度ではドットモード、ロゴなど文字を大きくシンボリックに表現したい場合はメッシュモードがおすすめです。
+
+#### どうやって曲線を作っている？
+
+[こちらのリンク先](https://qiita.com/tropical-362827/items/6be88a910efa81f45791)に解説記事を書いてみました。ご興味あれば読んでみてください。
 
 """,
         "metadata_folder": "文字情報",
@@ -69,7 +80,7 @@ TRANSLATIONS = {
         "text_placeholder": "ここにテキストを入力",
         "font_label": "フォント",
         "color_label": "色",
-        "alpha_label": "色の透明度(マップ平面のみ有効)",
+        "alpha_label": "色の透明度",
         "text_size_title": "文字の大きさ",
         "text_size_help": "文字の縦幅。0.1で一文字がキャラの手のひらほどの大きさ、0.4でキャラの頭ほどの大きさになります。",
         "text_size_example": "フォントサイズの例",
@@ -86,9 +97,13 @@ TRANSLATIONS = {
         "x_spacing_label": "横方向の間隔",
         "x_spacing_help": "横方向だけ間隔を詰めたり広げたりします。1.0が現在の間隔です。",
         "plane_type_label": "使用する平面",
-        "plane_type_help": "マップの方の平面を使うか、キャラの方の平面を使うかを設定します。マップライトとキャラライトのどちらのライトに影響されるかが決まります。",
+        "plane_type_help": "マップの方(基本形→通常)の平面を使うか、キャラの方(基本形→キャラ)の平面を使うかを設定します。マップライトとキャラライトのどちらのライトに影響されるかが決まります。",
         "plane_map": "平面(マップ)",
         "plane_chara": "平面(キャラ)",
+        "triangle_type_label": "使用する三角形",
+        "triangle_type_help": "マップの方(基本形→通常)の三角形を使うか、キャラの方(基本形→キャラ)の三角形を使うかを設定します。マップライトとキャラライトのどちらのライトに影響されるかが決まります。",
+        "triangle_map": "三角形(マップ)",
+        "triangle_chara": "三角形(キャラ)",
         "render_mode_label": "生成方式",
         "render_mode_help": "ドット平面で作るか、三角形メッシュで作るかを選びます。",
         "render_mode_dot": "ドット(平面)",
@@ -125,6 +140,7 @@ TRANSLATIONS = {
         "error_no_text": "テキストが入力されていません",
         "generating": "シーンを生成中...",
         "success_generate": "生成完了！ ({count} 個の平面)",
+        "dot_plane_limit_error": "推定平面数が上限を超えています。推定 {count:,} 個 / 上限 {limit:,} 個。文字数を減らすか、一文字あたり細かさを下げるか、アンチエイリアスをOFFにして平面結合をONにしてください。",
         "preview_title": "文字生成イメージ",
         "original_image": "元のテキスト画像",
         "pixel_data": "ピクセルデータ ({width}×{height})",
@@ -144,7 +160,12 @@ TRANSLATIONS = {
     },
     "en": {
         "title": "Digital Craft Calligrapher",
-        "subtitle": "Recreate text using planes arranged in a Digital Craft scene. Import the downloaded scene to use.",
+        "subtitle": """Place text inside a Digital Craft scene.
+
+- **Dot mode** — builds characters by arranging square planes in a grid
+- **Mesh mode** — builds characters as smooth curves
+
+Two modes are available.""",
         "qa_title": "Q&A",
         "qa_content": """
 #### It gets heavy when I add text!
@@ -166,6 +187,11 @@ Dot mode represents text by arranging planes in a grid, while Mesh mode represen
 - Mesh mode takes longer to process, but it preserves smooth glyph outlines.
 
 If the text is only displayed small in a scene, Dot mode is usually enough. For large, symbolic text such as logos, Mesh mode is recommended.
+
+#### How are the curves generated?
+
+I wrote a blog post explaining it [here](https://qiita.com/tropical-362827/items/6be88a910efa81f45791). Feel free to check it out if you're curious.
+
 """,
         "metadata_folder": "Text Info",
         "meta_font": "Font",
@@ -190,7 +216,7 @@ If the text is only displayed small in a scene, Dot mode is usually enough. For 
         "text_placeholder": "Enter text here",
         "font_label": "Font",
         "color_label": "Color",
-        "alpha_label": "Color transparency (Map plane only)",
+        "alpha_label": "Color transparency",
         "text_size_title": "Text Size",
         "text_size_help": "Text height. 0.1 is about the size of a character's palm, 0.4 is about character's head.",
         "text_size_example": "Font size example",
@@ -207,9 +233,13 @@ If the text is only displayed small in a scene, Dot mode is usually enough. For 
         "x_spacing_label": "Horizontal spacing",
         "x_spacing_help": "Adjust horizontal spacing only. 1.0 is the current spacing.",
         "plane_type_label": "Plane type to use",
-        "plane_type_help": "Choose whether to use map planes or character planes. This determines which light type affects them.",
+        "plane_type_help": "Choose whether to use map (Primitives → Normal) planes or character (Primitives → Character) planes. This determines which light type affects them.",
         "plane_map": "Plane (Map)",
         "plane_chara": "Plane (Character)",
+        "triangle_type_label": "Triangle type to use",
+        "triangle_type_help": "Choose whether to use map (Primitives → Normal) triangles or character (Primitives → Character) triangles. This determines which light type affects them.",
+        "triangle_map": "Triangle (Map)",
+        "triangle_chara": "Triangle (Character)",
         "render_mode_label": "Render mode",
         "render_mode_help": "Choose dot planes or triangulated mesh rendering.",
         "render_mode_dot": "Dots (Planes)",
@@ -246,6 +276,7 @@ If the text is only displayed small in a scene, Dot mode is usually enough. For 
         "error_no_text": "No text entered",
         "generating": "Generating scene...",
         "success_generate": "Generation complete! ({count} planes)",
+        "dot_plane_limit_error": "Estimated plane count exceeds the limit. Estimated {count:,} / limit {limit:,}. Reduce the text length or resolution, or turn antialiasing off and enable plane merging.",
         "preview_title": "Text generation preview",
         "original_image": "Original text image",
         "pixel_data": "Pixel data ({width}×{height})",
@@ -280,6 +311,7 @@ class DotRenderConfig:
     FONT_SIZE = 200
     CHAR_CANVAS_PADDING = 5
     DEFAULT_RESOLUTION = 100
+    MAX_PLANE_COUNT = 60_000
 
 
 class MeshRenderConfig:
@@ -295,7 +327,7 @@ class MeshRenderConfig:
     SOLVER_CHILD_SCALE_MIN = 1e-4
     SOLVER_LM_REG_WEIGHT = 1e-6
     SOLVER_REFERENCE_TEXT_HEIGHT = 1.0
-    FLATTEN_SEGMENT_LENGTH_DEFAULT = 20.0
+    FLATTEN_SEGMENT_LENGTH_DEFAULT = 50.0
     OUTLINE_WIDTH_DEFAULT = 0.0
     OUTLINE_COLOR_HEX_DEFAULT = "#000000"
     OUTLINE_Y_OFFSET_DEFAULT = -0.001
@@ -324,8 +356,8 @@ PLANE_PRESETS = {
     "平面(キャラ)": {"category": 1, "no": 290},
 }
 TRIANGLE_PRESETS = {
-    "平面(マップ)": {"category": 0, "no": 216},
-    "平面(キャラ)": {"category": 1, "no": 291},
+    "三角形(マップ)": {"category": 0, "no": 216},
+    "三角形(キャラ)": {"category": 1, "no": 291},
 }
 
 
@@ -480,9 +512,9 @@ def render_scene_info(
             st.metric(get_text("plane_reduction", lang), "-", "-")
 
 
-def build_scene_filename(text_input):
+def build_scene_filename(text_input, render_mode_key="dot"):
     safe_text = "".join(c if c.isalnum() else "_" for c in text_input)
-    return f"digitalcraft_scene_text_{safe_text}.png"
+    return f"digitalcraft_scene_{render_mode_key}_text_{safe_text}.png"
 
 
 TEMPLATE_SCENE_META = {
@@ -1386,6 +1418,157 @@ class DotRenderPipeline:
         return planes, len(runs)
 
     @staticmethod
+    def count_planes_from_pixels(
+        pixels,
+        color=None,
+        edge_color=None,
+        antialias=True,
+        merge_horizontal=False,
+        merge_color_threshold=0.05,
+    ):
+        """平面オブジェクトを作らず、pixels_to_planes と同じ規則で平面数を数える。"""
+        height, width = pixels.shape
+        runs = []
+        runs_by_row = [[] for _ in range(height)]
+        if color is None:
+            color = {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0}
+        if edge_color is None:
+            edge_color = {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0}
+
+        effective_threshold = 1 if antialias else 128
+
+        def flush_run(run_start, run_end, run_color, row_index):
+            run_info = {
+                "start": run_start,
+                "end": run_end,
+                "row": row_index,
+                "color": run_color,
+            }
+            runs.append(run_info)
+            runs_by_row[row_index].append(run_info)
+
+        for row in range(height):
+            run_start = None
+            run_color = None
+            run_end = None
+
+            for col in range(width):
+                pixel_value = pixels[row, col]
+                if pixel_value >= effective_threshold:
+                    shaded_color = DotRenderPipeline.resolve_pixel_color(
+                        pixel_value, color, edge_color, antialias
+                    )
+                    if run_start is None:
+                        run_start = col
+                        run_end = col
+                        run_color = shaded_color
+                    elif merge_horizontal and DotRenderPipeline.colors_close(
+                        shaded_color, run_color, merge_color_threshold
+                    ):
+                        run_end = col
+                    else:
+                        flush_run(run_start, run_end, run_color, row)
+                        run_start = col
+                        run_end = col
+                        run_color = shaded_color
+                elif run_start is not None:
+                    flush_run(run_start, run_end, run_color, row)
+                    run_start = None
+                    run_end = None
+                    run_color = None
+
+            if run_start is not None:
+                flush_run(run_start, run_end, run_color, row)
+
+        if not merge_horizontal:
+            return len(runs), len(runs)
+
+        def color_key(color_value):
+            return (
+                color_value["r"],
+                color_value["g"],
+                color_value["b"],
+                color_value["a"],
+            )
+
+        plane_count = 0
+        active_runs = {}
+        for row in range(height):
+            row_runs = runs_by_row[row]
+            next_active = {}
+            for run in row_runs:
+                key = (run["start"], run["end"], color_key(run["color"]))
+                if key in active_runs and active_runs[key]["row_end"] == row - 1:
+                    active_runs[key]["row_end"] = row
+                    next_active[key] = active_runs[key]
+                else:
+                    next_active[key] = {
+                        "start": run["start"],
+                        "end": run["end"],
+                        "color": run["color"],
+                        "row_start": row,
+                        "row_end": row,
+                    }
+
+            for key in active_runs:
+                if key not in next_active:
+                    plane_count += 1
+            active_runs = next_active
+
+        plane_count += len(active_runs)
+        return plane_count, len(runs)
+
+    @staticmethod
+    def estimate_plane_counts(
+        text,
+        font_size,
+        per_char_resolution,
+        color=None,
+        edge_color=None,
+        antialias=True,
+        font_path=None,
+        merge_horizontal=False,
+        merge_color_threshold=0.05,
+    ):
+        """ドットモード生成前に最終平面数を見積もる。"""
+        font = load_font(font_size, font_path)
+        canvas_width, canvas_height = DotRenderPipeline.compute_canvas_size(
+            text, font, DotRenderConfig.CHAR_CANVAS_PADDING
+        )
+        effective_threshold = 1 if antialias else 128
+        char_pixels_list, _, raw_plane_count = DotRenderPipeline.build_char_pixels(
+            text,
+            font,
+            font_size,
+            per_char_resolution,
+            canvas_width,
+            canvas_height,
+            effective_threshold,
+        )
+
+        plane_count = 0
+        plane_count_horizontal = 0
+        for char_pixels in char_pixels_list:
+            char_plane_count, char_horizontal_count = (
+                DotRenderPipeline.count_planes_from_pixels(
+                    np.fliplr(char_pixels),
+                    color=color,
+                    edge_color=edge_color,
+                    antialias=antialias,
+                    merge_horizontal=merge_horizontal,
+                    merge_color_threshold=merge_color_threshold,
+                )
+            )
+            plane_count += char_plane_count
+            plane_count_horizontal += char_horizontal_count
+
+        return {
+            "plane_count": plane_count,
+            "plane_count_horizontal": plane_count_horizontal,
+            "raw_plane_count": raw_plane_count,
+        }
+
+    @staticmethod
     def generate_text_scene(
         text,
         template_scene,
@@ -1620,6 +1803,26 @@ class DotRenderPipeline:
         lang,
     ):
         edge_color = hex_to_color(dot_settings["edge_color_hex"])
+        plane_count_estimate = DotRenderPipeline.estimate_plane_counts(
+            text=text_input,
+            font_size=font_size,
+            per_char_resolution=layout["grid_height"],
+            color=color,
+            edge_color=edge_color,
+            antialias=dot_settings["antialias"],
+            font_path=selected_font,
+            merge_horizontal=dot_settings["merge_horizontal"],
+            merge_color_threshold=dot_settings["merge_color_threshold"],
+        )
+        if plane_count_estimate["plane_count"] > DotRenderConfig.MAX_PLANE_COUNT:
+            st.error(
+                get_text("dot_plane_limit_error", lang).format(
+                    count=plane_count_estimate["plane_count"],
+                    limit=DotRenderConfig.MAX_PLANE_COUNT,
+                )
+            )
+            st.stop()
+
         with st.spinner(get_text("generating", lang)):
             (
                 scene,
@@ -3507,7 +3710,7 @@ def main():
             st.stop()
 
         with st.expander(f"❓ {get_text('qa_title', lang)}", expanded=False):
-            st.markdown(get_text("qa_content", lang).strip())
+            st.markdown(get_text("qa_content", lang).strip(), unsafe_allow_html=True)
 
         # メインページでパラメータ設定
         st.header(f"⚙️ {get_text('param_settings', lang)}")
@@ -3538,29 +3741,18 @@ def main():
 
         # 色設定
         color_hex = st.color_picker(get_text("color_label", lang), value="#FFFFFF")
-        color_alpha = st.slider(
-            get_text("alpha_label", lang),
-            min_value=0.0,
-            max_value=1.0,
-            value=1.0,
-            step=0.05,
-        )
-        st.markdown("---")
 
         # 文字の大きさ（縦幅）
-        st.subheader(f"📏 {get_text('text_size_title', lang)}")
-        st.text(get_text("text_size_help", lang))
-
-        with st.expander(get_text("text_size_example", lang), expanded=False):
-            st.markdown("![font size example](https://i.imgur.com/wbhZ8Gd.jpeg)")
-
         text_height = st.slider(
-            get_text("height_label", lang),
+            f"📏 {get_text('text_size_title', lang)}",
             min_value=0.01,
             max_value=2.0,
             value=0.5,
             step=0.01,
         )
+        st.caption(get_text("text_size_help", lang))
+        with st.expander(get_text("text_size_example", lang), expanded=False):
+            st.markdown("![font size example](https://i.imgur.com/y04URY3.jpeg)")
 
         st.markdown("---")
 
@@ -3574,12 +3766,40 @@ def main():
                     mesh_settings = MeshRenderPipeline.render_advanced_settings(lang)
                 case "dot":
                     dot_settings = DotRenderPipeline.render_advanced_settings(lang)
-            plane_preset = st.selectbox(
-                get_text("plane_type_label", lang),
-                options=[get_text("plane_map", lang), get_text("plane_chara", lang)],
-                index=0,
-                help=get_text("plane_type_help", lang),
+            if render_mode_key == "mesh":
+                plane_preset = st.selectbox(
+                    get_text("triangle_type_label", lang),
+                    options=[
+                        get_text("triangle_map", lang),
+                        get_text("triangle_chara", lang),
+                    ],
+                    index=0,
+                    help=get_text("triangle_type_help", lang),
+                )
+            else:
+                plane_preset = st.selectbox(
+                    get_text("plane_type_label", lang),
+                    options=[
+                        get_text("plane_map", lang),
+                        get_text("plane_chara", lang),
+                    ],
+                    index=0,
+                    help=get_text("plane_type_help", lang),
+                )
+            is_map_preset = plane_preset in (
+                get_text("plane_map", lang),
+                get_text("triangle_map", lang),
             )
+            if is_map_preset:
+                color_alpha = st.slider(
+                    get_text("alpha_label", lang),
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=1.0,
+                    step=0.05,
+                )
+            else:
+                color_alpha = 1.0
             light_cancel = st.slider(
                 get_text("light_cancel_label", lang),
                 min_value=0.0,
@@ -3615,13 +3835,16 @@ def main():
                     color = hex_to_color(color_hex)
                     color["a"] = color_alpha
                     # plane_preset は言語によって変わるので、インデックスで判定
-                    plane_preset_key = (
-                        "平面(マップ)"
-                        if plane_preset == get_text("plane_map", lang)
-                        else "平面(キャラ)"
+                    is_map = plane_preset in (
+                        get_text("plane_map", lang),
+                        get_text("triangle_map", lang),
+                    )
+                    plane_preset_key = "平面(マップ)" if is_map else "平面(キャラ)"
+                    triangle_preset_key = (
+                        "三角形(マップ)" if is_map else "三角形(キャラ)"
                     )
                     plane_settings = PLANE_PRESETS[plane_preset_key]
-                    triangle_settings = TRIANGLE_PRESETS[plane_preset_key]
+                    triangle_settings = TRIANGLE_PRESETS[triangle_preset_key]
                     resolved_plane_template = {
                         **plane_template,
                         "data": {
@@ -3641,7 +3864,7 @@ def main():
                                     color_hex=color_hex,
                                     color_alpha=color_alpha,
                                     text_height=text_height,
-                                    plane_preset_key=plane_preset_key,
+                                    plane_preset_key=triangle_preset_key,
                                     light_cancel=light_cancel,
                                     flatten_segment_length=mesh_settings[
                                         "flatten_segment_length"
@@ -3751,7 +3974,7 @@ def main():
                             )
 
                     # ダウンロードボタン
-                    filename = build_scene_filename(text_input)
+                    filename = build_scene_filename(text_input, render_mode_key)
 
                     preview_buf = io.BytesIO()
                     build_scene_thumbnail_image(preview_pixels).save(
