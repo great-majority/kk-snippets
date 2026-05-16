@@ -71,6 +71,14 @@ A: すみません、おそらくバグです！[githubのissue](https://github.
         "input_preview_title": "入力SVGプレビュー",
         "generate_button": "シーンを生成",
         "generating": "シーンを生成中...",
+        "mesh_stage_prepare": "準備中",
+        "mesh_stage_normalize": "SVG輪郭を整形中",
+        "mesh_stage_triangulate": "三角形分割中",
+        "mesh_stage_solve": "三角形の変形を計算中",
+        "mesh_stage_preview": "プレビューを作成中",
+        "mesh_stage_scene": "シーンを組み立て中",
+        "mesh_stage_thumbnail": "サムネイルを作成中",
+        "mesh_stage_done": "完了",
         "success_generate": "生成完了 ({count} triangles)",
         "scene_info_title": "シーン情報",
         "scene_total_triangles": "総三角形数",
@@ -147,6 +155,14 @@ A: Sorry, that is probably a bug. If you report it on [GitHub Issues](https://gi
         "input_preview_title": "Input SVG Preview",
         "generate_button": "Generate Scene",
         "generating": "Generating scene...",
+        "mesh_stage_prepare": "Preparing",
+        "mesh_stage_normalize": "Normalizing SVG contours",
+        "mesh_stage_triangulate": "Triangulating",
+        "mesh_stage_solve": "Solving triangle transforms",
+        "mesh_stage_preview": "Building preview",
+        "mesh_stage_scene": "Building scene",
+        "mesh_stage_thumbnail": "Building thumbnail",
+        "mesh_stage_done": "Done",
         "success_generate": "Generation complete ({count} triangles)",
         "scene_info_title": "Scene Info",
         "scene_total_triangles": "Total Triangles",
@@ -828,6 +844,67 @@ class MeshPipeline:
         MeshConfig.TRIWILD_TARGET_EDGE_LEN = -1.0
 
     @staticmethod
+    def build_progress_callback(lang: str):
+        """SVGメッシュ生成の進捗表示コールバックを作る。"""
+        progress_bar = st.progress(0, text=f"{get_text('generating', lang)} 0%")
+        progress_status = st.empty()
+        progress_state = {"percent": -1, "status": ""}
+        stage_labels = {
+            "prepare": get_text("mesh_stage_prepare", lang),
+            "normalize": get_text("mesh_stage_normalize", lang),
+            "triangulate": get_text("mesh_stage_triangulate", lang),
+            "solve": get_text("mesh_stage_solve", lang),
+            "preview": get_text("mesh_stage_preview", lang),
+            "scene": get_text("mesh_stage_scene", lang),
+            "thumbnail": get_text("mesh_stage_thumbnail", lang),
+            "done": get_text("mesh_stage_done", lang),
+        }
+        stage_ranges = {
+            "prepare": (0, 5),
+            "normalize": (5, 10),
+            "triangulate": (10, 40),
+            "solve": (40, 88),
+            "preview": (88, 94),
+            "scene": (94, 97),
+            "thumbnail": (97, 99),
+            "done": (100, 100),
+        }
+
+        def svg_progress_callback(stage, current=None, total=None, note=""):
+            start, end = stage_ranges.get(
+                stage,
+                (
+                    progress_state["percent"] if progress_state["percent"] >= 0 else 0,
+                    progress_state["percent"] if progress_state["percent"] >= 0 else 0,
+                ),
+            )
+            ratio = 1.0
+            if total and total > 0 and current is not None:
+                ratio = min(1.0, max(0.0, float(current) / float(total)))
+            percent = int(round(start + (end - start) * ratio))
+            percent = max(0, min(100, percent))
+            if progress_state["percent"] >= 0:
+                percent = max(progress_state["percent"], percent)
+
+            stage_label = stage_labels.get(stage, stage)
+            status_text = stage_label
+            if total and total > 0 and current is not None:
+                status_text = f"{status_text} ({int(current)}/{int(total)})"
+            if note:
+                status_text = f"{status_text} [{note}]"
+
+            if percent != progress_state["percent"]:
+                progress_bar.progress(
+                    percent, text=f"{get_text('generating', lang)} {percent}%"
+                )
+                progress_state["percent"] = percent
+            if status_text != progress_state["status"]:
+                progress_status.caption(status_text)
+                progress_state["status"] = status_text
+
+        return svg_progress_callback
+
+    @staticmethod
     def polygon_signed_area(points: np.ndarray) -> float:
         """靴紐公式で多角形の符号付き面積を計算する。"""
         x_values = points[:, 0]
@@ -1263,6 +1340,7 @@ class MeshPipeline:
         reconstruction_max_abs_tol: float = MeshConfig.RECONSTRUCTION_MAX_ABS_TOL,
         y_offset: float = 0.0,
         y_offsets: list[float] | None = None,
+        progress_callback=None,
     ) -> tuple[list[dict[str, Any]], int, int, dict[str, float], list[dict[str, Any]]]:
         """文字単位でメッシュ三角形フォルダと統計情報を構築する。"""
         solver = TriangleSolverOptimized(MeshConfig.SOURCE_TRIANGLE)
@@ -1281,6 +1359,19 @@ class MeshPipeline:
             triangles = MeshPipeline.triangulate_contours(contours)
             triangles_per_char.append(triangles)
             raw_triangle_count += len(triangles)
+            if progress_callback is not None:
+                progress_callback(
+                    stage="triangulate",
+                    current=idx + 1,
+                    total=len(labels),
+                    note=labels[idx],
+                )
+
+        total_triangles = sum(len(triangles) for triangles in triangles_per_char)
+        processed_triangles = 0
+        solve_progress_step = (
+            max(1, total_triangles // 250) if total_triangles > 0 else 1
+        )
 
         for idx, label in enumerate(labels):
             char_data = char_mesh_data[idx]
@@ -1296,6 +1387,18 @@ class MeshPipeline:
                 0.0 if y_offsets is not None else float(y_offset)
             )
             for triangle in triangles:
+                processed_triangles += 1
+                if progress_callback is not None and (
+                    processed_triangles == 1
+                    or processed_triangles == total_triangles
+                    or (processed_triangles % solve_progress_step) == 0
+                ):
+                    progress_callback(
+                        stage="solve",
+                        current=processed_triangles,
+                        total=total_triangles,
+                        note=label,
+                    )
                 triangle_object, solved = MeshPipeline.create_sheared_triangle(
                     plane_template,
                     triangle_template,
@@ -2017,12 +2120,56 @@ def rgba_dict_to_tuple(
     )
 
 
+def color_luminance(color: tuple[int, int, int, int]) -> float:
+    """Pillow RGBA色の相対輝度を0-1で返す。"""
+    r = color[0] / 255.0
+    g = color[1] / 255.0
+    b = color[2] / 255.0
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def choose_preview_background_color(
+    colored_groups: list[tuple[list[np.ndarray], dict[str, float] | None]],
+    *,
+    fallback_color: dict[str, float] | None,
+    use_svg_color: bool,
+    force_opaque_shapes: bool = False,
+    luminance_threshold: float = 0.85,
+) -> tuple[int, int, int, int]:
+    """図形色が明るい場合は黒背景、それ以外は薄い背景を選ぶ。"""
+    light_background = (246, 247, 248, 255)
+    dark_background = (18, 18, 20, 255)
+    default_shape_fill = (51, 65, 85, 235)
+    fallback_fill = rgba_dict_to_tuple(fallback_color, default_shape_fill)
+
+    colors: list[tuple[int, int, int, int]] = []
+    if use_svg_color:
+        for _, svg_color in colored_groups:
+            colors.append(rgba_dict_to_tuple(svg_color, fallback_fill))
+    else:
+        colors.append(fallback_fill)
+
+    visible_colors = [
+        color
+        for color in colors
+        if force_opaque_shapes or color[3] >= int(round(255 * 0.05))
+    ]
+    if not visible_colors:
+        visible_colors = [fallback_fill]
+
+    brightest = max(color_luminance(color) for color in visible_colors)
+    if brightest >= luminance_threshold:
+        return dark_background
+    return light_background
+
+
 def build_source_preview(
     colored_groups: list[tuple[list[np.ndarray], dict[str, float] | None]],
     *,
     fallback_color: dict[str, float] | None = None,
     use_svg_color: bool = True,
     force_opaque_shapes: bool = False,
+    background: tuple[int, int, int, int] | None = None,
     width: int = 900,
     height: int = 360,
     padding: int = 24,
@@ -2063,7 +2210,13 @@ def build_source_preview(
         y = origin_y + (point[1] - min_y) * scale
         return float(x), float(y)
 
-    background = (246, 247, 248, 255)
+    if background is None:
+        background = choose_preview_background_color(
+            colored_groups,
+            fallback_color=fallback_color,
+            use_svg_color=use_svg_color,
+            force_opaque_shapes=force_opaque_shapes,
+        )
     default_shape_fill = (51, 65, 85, 235)
     fallback_fill = rgba_dict_to_tuple(fallback_color, default_shape_fill)
     image = Image.new("RGBA", (draw_width, draw_height), background)
@@ -2133,6 +2286,7 @@ def build_svg_scene(
     generation_metadata: dict[str, Any],
     scene_root_name: str,
     lang: str,
+    progress_callback=None,
 ) -> tuple[HoneycomeSceneData, int, int, dict[str, Any], Image.Image | None]:
     """メッシュ生成結果とメタデータをまとめてシーンを構築する。"""
     n = len(svg_mesh_data)
@@ -2163,6 +2317,7 @@ def build_svg_scene(
         folder_obj,
         colors,
         y_offsets=y_offsets,
+        progress_callback=progress_callback,
     )
 
     scene_children: list[dict[str, Any]] = []
@@ -2176,10 +2331,14 @@ def build_svg_scene(
         "accepted_rmse": float(mesh_stats["accepted_rmse"]),
     }
 
+    if progress_callback is not None:
+        progress_callback(stage="preview", current=1, total=1)
     triangulation_preview = MeshPipeline.build_mesh_triangulation_preview(
         svg_mesh_data, triangle_status_records
     )
 
+    if progress_callback is not None:
+        progress_callback(stage="scene", current=1, total=1)
     scene = copy.deepcopy(template_scene)
     scene.title = scene_root_name
     new_folder = copy.deepcopy(folder_obj)
@@ -2350,14 +2509,17 @@ def main() -> None:
         get_text("meta_edge_length_r", lang): mesh_settings["edge_length_r"],
     }
 
-    svg_mesh_data = build_svg_mesh_data(
-        source_contours, target_height=text_height * SVG_SCENE_HEIGHT_FACTOR
-    )
     scene_root_name = (
         f"{get_text('scene_root', lang)}: {sanitize_stem(uploaded_svg.name)}"
     )
 
     with st.spinner(get_text("generating", lang)):
+        progress_callback = MeshPipeline.build_progress_callback(lang)
+        progress_callback(stage="prepare", current=1, total=1)
+        svg_mesh_data = build_svg_mesh_data(
+            source_contours, target_height=text_height * SVG_SCENE_HEIGHT_FACTOR
+        )
+        progress_callback(stage="normalize", current=1, total=1)
         scene, plane_count, raw_plane_count, mesh_stats, triangulation_preview = (
             build_svg_scene(
                 template_scene=template_scene,
@@ -2372,8 +2534,31 @@ def main() -> None:
                 generation_metadata=generation_metadata,
                 scene_root_name=scene_root_name,
                 lang=lang,
+                progress_callback=progress_callback,
             )
         )
+        progress_callback(stage="thumbnail", current=0, total=1)
+        scene_image = build_source_preview(
+            source_contours,
+            fallback_color=color,
+            use_svg_color=use_svg_color,
+            force_opaque_shapes=True,
+            width=1280,
+            height=720,
+            padding=64,
+        )
+        if scene_image is None:
+            scene_image = (
+                source_preview if source_preview is not None else triangulation_preview
+            )
+        if scene_image is None:
+            scene_image = Image.new("RGBA", (1280, 720), (20, 20, 20, 255))
+
+        preview_buf = io.BytesIO()
+        make_opaque_image(scene_image).save(preview_buf, format="PNG")
+        scene.image = preview_buf.getvalue()
+        progress_callback(stage="thumbnail", current=1, total=1)
+        progress_callback(stage="done", current=1, total=1)
 
     st.success(get_text("success_generate", lang).format(count=plane_count))
     MeshPipeline.render_generation_feedback(mesh_stats, lang)
@@ -2384,26 +2569,6 @@ def main() -> None:
         lang=lang,
     )
     MeshPipeline.render_triangulation_section(triangulation_preview, lang)
-
-    scene_image = build_source_preview(
-        source_contours,
-        fallback_color=color,
-        use_svg_color=use_svg_color,
-        force_opaque_shapes=True,
-        width=1280,
-        height=720,
-        padding=64,
-    )
-    if scene_image is None:
-        scene_image = (
-            source_preview if source_preview is not None else triangulation_preview
-        )
-    if scene_image is None:
-        scene_image = Image.new("RGBA", (1280, 720), (20, 20, 20, 255))
-
-    preview_buf = io.BytesIO()
-    make_opaque_image(scene_image).save(preview_buf, format="PNG")
-    scene.image = preview_buf.getvalue()
 
     filename = f"digitalcraft_scene_svg_{sanitize_stem(uploaded_svg.name)}.png"
     st.download_button(
