@@ -43,6 +43,11 @@ https://kk-snippets.streamlit.app/digital-craft-calligrapher
 
 A tool that outputs your text as a digital craft scene file made of planes. It also supports font selection and size adjustments.
 
+### Digital Craft SVG Builder
+https://kk-snippets.streamlit.app/digital-craft-svg-importer
+
+A tool for converting SVG images into Digital Craft scene files made of triangle planes.
+
 ### Digital Craft Item Converter
 https://kk-snippets.streamlit.app/digital-craft-item-converter
 

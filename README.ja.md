@@ -41,6 +41,11 @@ https://kk-snippets.streamlit.app/digital-craft-calligrapher
 
 好きなテキストを平面を並べたデジタルクラフトのシーンファイルとして出力するツールです。フォント選択やサイズ調整もできます。
 
+### デジクラSVGビルダー
+https://kk-snippets.streamlit.app/digital-craft-svg-importer
+
+SVG画像を三角形の平面で構成されたデジタルクラフトのシーンファイルに変換するツールです。
+
 ### デジクラアイテム変換ツール
 https://kk-snippets.streamlit.app/digital-craft-item-converter
 
