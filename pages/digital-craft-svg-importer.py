@@ -11,7 +11,7 @@ import wildmeshing as wildmeshing_lib
 from kkloader import HoneycomeSceneData
 from PIL import Image, ImageDraw
 from scipy.optimize import least_squares
-from svgelements import SVG, Close, Move
+from svgelements import SVG, Arc, Close, CubicBezier, Move, QuadraticBezier
 from svgelements import Path as SVGPath
 
 DEG2RAD = math.pi / 180.0
@@ -19,26 +19,49 @@ DEG2RAD = math.pi / 180.0
 TRANSLATIONS = {
     "ja": {
         "language_label": "Language / 言語",
-        "title": "デジクラ SVG インポーター",
-        "subtitle": "SVGの輪郭を三角形メッシュ化してシーンを書き出します。",
+        "title": "デジクラ SVG ビルダー",
+        "subtitle": "SVG画像をデジクラ内で扱えるよう変換します。",
+        "qa_title": "Q&A",
+        "qa_content": """
+**Q: SVGアイコン画像はどこで入手できる？**
+
+A: ライセンスフリーのSVG画像が
+
+- [Google Fonts](https://fonts.google.com/icons)
+- [Phosphor Icons](https://phosphoricons.com/)
+- [Fonts Awesome](https://fontawesome.com/icons/classic/solid/classic)
+
+などにあります。これ以外にも、「SVG 配布」などで検索してみると良いでしょう。
+
+**Q: 図形が多すぎて重い！ or 図形がカクカクする！**
+
+A: 「詳細設定」の「曲線のなめらかさ」と「三角形の粗さ」を調整してみてください。デフォルトではなめらかめにしてあるため、三角形がちょっと多くなっている可能性があります。
+
+**Q: なんか図形が変になった！**
+
+A: すみません、おそらくバグです！[githubのissue](https://github.com/great-majority/kk-snippets/issues)に不具合が起きた画像とともに報告してもらえれば対応できるかも知れません。
+""",
         "upload_label": "SVGファイル",
-        "upload_info": "まずSVGファイルをアップロードしてください。",
+        "upload_info": "SVGファイルを読み込んでください。",
         "color_label": "色",
         "alpha_label": "透明度",
-        "height_label": "高さ",
-        "auto_close_label": "開いたパスを自動クローズする",
-        "auto_close_help": "Zで閉じていないサブパスもメッシュ化時に閉じ輪郭として扱います。",
+        "height_label": "縦長サイズ",
+        "size_help": "だいたいこの図の数字の大きさがそのまま図形の縦長に一致するようになっています。",
+        "text_size_example": "オブジェクトサイズの例",
+        "use_svg_color_label": "SVGの色を使用する",
+        "use_svg_color_help": "各要素のfill/stroke色をそのまま使います。チェックを外すと色選択が有効になります。",
         "advanced_settings": "詳細設定",
-        "mesh_flatten_length_label": "メッシュ線分長",
-        "mesh_flatten_length_help": "小さいほど曲線分割が細かくなり、三角形数が増えます。",
-        "mesh_outline_enable_label": "縁取りを有効化",
-        "mesh_outline_enable_help": "形状の背面に縁取りメッシュを追加します。",
-        "mesh_outline_width_label": "縁取り幅",
-        "mesh_outline_color_label": "縁取り色",
-        "mesh_stop_quality_label": "メッシュ stop_quality",
-        "mesh_edge_length_r_label": "メッシュ edge_length_r",
-        "mesh_target_edge_len_enable": "絶対辺長 target_edge_len を使う",
-        "mesh_target_edge_len_label": "target_edge_len",
+        "curve_smoothness_label": "曲線のなめらかさ",
+        "curve_smoothness_help": "高いほどSVGの曲線を細かく読み込みます。三角形数と生成時間が増える場合があります。",
+        "curve_smoothness_presets": {
+            1: "軽量",
+            2: "粗い",
+            3: "標準",
+            4: "なめらか",
+            5: "高精細",
+        },
+        "mesh_edge_length_r_label": "三角形の粗さ",
+        "mesh_edge_length_r_help": "大きいほど三角形が少なくなり、小さいほど細かくなります。",
         "plane_preset_label": "平面プリセット",
         "plane_preset_map": "平面(マップ)",
         "plane_preset_character": "平面(キャラ)",
@@ -59,7 +82,6 @@ TRANSLATIONS = {
         "triangulation_title": "三角形分割プレビュー",
         "triangulation_empty": "分割結果がありません。",
         "metadata_folder": "メタデータ",
-        "outline_folder": "縁取り",
         "scene_root": "SVG",
         "meta_source": "SVGファイル",
         "meta_color": "色",
@@ -67,37 +89,55 @@ TRANSLATIONS = {
         "meta_height": "高さ",
         "meta_plane_preset": "平面プリセット",
         "meta_light_influence": "ライトの影響度",
-        "meta_flatten_segment_length": "メッシュ線分長",
-        "meta_stop_quality": "stop_quality",
-        "meta_edge_length_r": "edge_length_r",
-        "meta_target_edge_len": "target_edge_len",
-        "meta_outline_enabled": "縁取り有効",
-        "meta_outline_width": "縁取り幅",
-        "meta_outline_color": "縁取り色",
+        "meta_curve_smoothness": "曲線のなめらかさ",
+        "meta_edge_length_r": "三角形の粗さ",
         "download_button": "シーンファイルをダウンロード",
     },
     "en": {
         "language_label": "Language / 言語",
-        "title": "Digital Craft SVG Importer",
-        "subtitle": "Convert SVG outlines into triangulated mesh and export a scene file.",
-        "upload_label": "SVG File",
-        "upload_info": "Upload an SVG file first.",
+        "title": "Digital Craft SVG Builder",
+        "subtitle": "Convert SVG images for use in Digital Craft.",
+        "qa_title": "Q&A",
+        "qa_content": """
+**Q: Where can I get SVG icon images?**
+
+A: License-free SVG images are available from sources such as:
+
+- [Google Fonts](https://fonts.google.com/icons)
+- [Phosphor Icons](https://phosphoricons.com/)
+- [Font Awesome](https://fontawesome.com/icons/classic/solid/classic)
+
+You can also search for terms like "free SVG icons" or "SVG icon library".
+
+**Q: There are too many shapes and the scene is heavy, or the shape looks jagged!**
+
+A: Try adjusting "Curve smoothness" and "Triangle coarseness" in Advanced Settings. The defaults are set to be fairly smooth, so the scene may contain more triangles than necessary.
+
+**Q: The shape looks wrong!**
+
+A: Sorry, that is probably a bug. If you report it on [GitHub Issues](https://github.com/great-majority/kk-snippets/issues) with the image that caused the problem, I may be able to fix it.
+""",
+        "upload_label": "SVG file",
+        "upload_info": "Load an SVG file.",
         "color_label": "Color",
         "alpha_label": "Opacity",
-        "height_label": "Height",
-        "auto_close_label": "Auto-close open paths",
-        "auto_close_help": "Treat open subpaths as closed when generating mesh.",
+        "height_label": "Vertical size",
+        "size_help": "The number in this example roughly matches the vertical size of the generated shape.",
+        "text_size_example": "Object size example",
+        "use_svg_color_label": "Use SVG colors",
+        "use_svg_color_help": "Apply each element's fill/stroke color. Uncheck to use the color picker instead.",
         "advanced_settings": "Advanced Settings",
-        "mesh_flatten_length_label": "Mesh segment length",
-        "mesh_flatten_length_help": "Smaller values split curves more finely and increase triangle count.",
-        "mesh_outline_enable_label": "Enable outline",
-        "mesh_outline_enable_help": "Adds an outline mesh behind the shape.",
-        "mesh_outline_width_label": "Outline width",
-        "mesh_outline_color_label": "Outline color",
-        "mesh_stop_quality_label": "Mesh stop_quality",
-        "mesh_edge_length_r_label": "Mesh edge_length_r",
-        "mesh_target_edge_len_enable": "Use absolute edge length (target_edge_len)",
-        "mesh_target_edge_len_label": "target_edge_len",
+        "curve_smoothness_label": "Curve smoothness",
+        "curve_smoothness_help": "Higher values load SVG curves more finely. This may increase triangle count and generation time.",
+        "curve_smoothness_presets": {
+            1: "Lightweight",
+            2: "Coarse",
+            3: "Standard",
+            4: "Smooth",
+            5: "High detail",
+        },
+        "mesh_edge_length_r_label": "Triangle coarseness",
+        "mesh_edge_length_r_help": "Higher values create fewer triangles; lower values create finer triangles.",
         "plane_preset_label": "Plane preset",
         "plane_preset_map": "Plane (Map)",
         "plane_preset_character": "Plane (Character)",
@@ -118,7 +158,6 @@ TRANSLATIONS = {
         "triangulation_title": "Triangulation Preview",
         "triangulation_empty": "No triangulation result.",
         "metadata_folder": "Metadata",
-        "outline_folder": "Outline",
         "scene_root": "SVG",
         "meta_source": "SVG file",
         "meta_color": "Color",
@@ -126,13 +165,8 @@ TRANSLATIONS = {
         "meta_height": "Height",
         "meta_plane_preset": "Plane preset",
         "meta_light_influence": "Light influence",
-        "meta_flatten_segment_length": "Mesh segment length",
-        "meta_stop_quality": "stop_quality",
-        "meta_edge_length_r": "edge_length_r",
-        "meta_target_edge_len": "target_edge_len",
-        "meta_outline_enabled": "Outline enabled",
-        "meta_outline_width": "Outline width",
-        "meta_outline_color": "Outline color",
+        "meta_curve_smoothness": "Curve smoothness",
+        "meta_edge_length_r": "Triangle coarseness",
         "download_button": "Download scene file",
     },
 }
@@ -156,6 +190,16 @@ TRIANGLE_PRESETS = {
     "character": {"category": 1, "no": 291},
 }
 
+CURVE_SMOOTHNESS_PRESETS = {
+    1: {"error": 1e-2, "min_depth": 1, "max_depth": 2},
+    2: {"error": 5e-3, "min_depth": 1, "max_depth": 3},
+    3: {"error": 2e-3, "min_depth": 2, "max_depth": 3},
+    4: {"error": 1e-3, "min_depth": 2, "max_depth": 3},
+    5: {"error": 5e-4, "min_depth": 2, "max_depth": 4},
+}
+CURVE_SMOOTHNESS_DEFAULT = 4
+SVG_SCENE_HEIGHT_FACTOR = 0.5
+
 
 class MeshConfig:
     SOURCE_TRIANGLE = np.array(
@@ -169,18 +213,16 @@ class MeshConfig:
     SOLVER_SX_MAX = 0.999999
     SOLVER_CHILD_SCALE_MIN = 1e-4
     SOLVER_LM_REG_WEIGHT = 1e-6
-    FLATTEN_SEGMENT_LENGTH_DEFAULT = 20.0
-    OUTLINE_WIDTH_DEFAULT = 0.0
-    OUTLINE_COLOR_HEX_DEFAULT = "#000000"
-    OUTLINE_Y_OFFSET_DEFAULT = -0.001
-
-    TRIWILD_STOP_QUALITY = 20.0
+    SVG_CURVE_SAMPLE_ERROR = 1e-3
+    SVG_CURVE_SAMPLE_MIN_DEPTH = 2
+    SVG_CURVE_SAMPLE_MAX_DEPTH = 3
+    TRIWILD_STOP_QUALITY = 10.0
     TRIWILD_MAX_ITS = 80
     TRIWILD_STAGE = 1
     TRIWILD_EPSILON = -1.0
     TRIWILD_FEATURE_EPSILON = 1e-3
     TRIWILD_TARGET_EDGE_LEN = -1.0
-    TRIWILD_EDGE_LENGTH_R = 0.12
+    TRIWILD_EDGE_LENGTH_R = 0.8
     TRIWILD_FLAT_FEATURE_ANGLE = 10.0
     TRIWILD_CUT_OUTSIDE = True
     TRIWILD_SKIP_EPS = True
@@ -735,97 +777,55 @@ class MeshPipeline:
     def default_advanced_settings() -> dict[str, Any]:
         """詳細設定UIの初期値セットを返す。"""
         return {
-            "flatten_segment_length": float(MeshConfig.FLATTEN_SEGMENT_LENGTH_DEFAULT),
-            "outline_enabled": False,
-            "outline_width": float(MeshConfig.OUTLINE_WIDTH_DEFAULT),
-            "outline_color_hex": MeshConfig.OUTLINE_COLOR_HEX_DEFAULT,
-            "stop_quality": float(MeshConfig.TRIWILD_STOP_QUALITY),
+            "curve_smoothness": CURVE_SMOOTHNESS_DEFAULT,
             "edge_length_r": float(MeshConfig.TRIWILD_EDGE_LENGTH_R),
-            "target_edge_len_enabled": MeshConfig.TRIWILD_TARGET_EDGE_LEN > 0.0,
-            "target_edge_len": (
-                float(MeshConfig.TRIWILD_TARGET_EDGE_LEN)
-                if MeshConfig.TRIWILD_TARGET_EDGE_LEN > 0.0
-                else 0.04
-            ),
         }
 
     @staticmethod
     def render_advanced_settings(lang: str) -> dict[str, Any]:
         """詳細設定UIを描画し、入力値を設定辞書で返す。"""
         settings: dict[str, Any] = {}
-        settings["flatten_segment_length"] = st.slider(
-            get_text("mesh_flatten_length_label", lang),
-            min_value=2.0,
-            max_value=100.0,
-            value=float(MeshConfig.FLATTEN_SEGMENT_LENGTH_DEFAULT),
-            step=1.0,
-            help=get_text("mesh_flatten_length_help", lang),
+        settings["curve_smoothness"] = st.slider(
+            get_text("curve_smoothness_label", lang),
+            min_value=1,
+            max_value=5,
+            value=CURVE_SMOOTHNESS_DEFAULT,
+            step=1,
+            format="%d",
+            help=get_text("curve_smoothness_help", lang),
         )
-        settings["outline_enabled"] = st.checkbox(
-            get_text("mesh_outline_enable_label", lang),
-            value=False,
-            help=get_text("mesh_outline_enable_help", lang),
-        )
-        if settings["outline_enabled"]:
-            settings["outline_width"] = st.slider(
-                get_text("mesh_outline_width_label", lang),
-                min_value=0.0,
-                max_value=0.015,
-                value=float(MeshConfig.OUTLINE_WIDTH_DEFAULT),
-                step=0.001,
-                format="%.3f",
-            )
-            settings["outline_color_hex"] = st.color_picker(
-                get_text("mesh_outline_color_label", lang),
-                value=MeshConfig.OUTLINE_COLOR_HEX_DEFAULT,
-            )
-        else:
-            settings["outline_width"] = 0.0
-            settings["outline_color_hex"] = MeshConfig.OUTLINE_COLOR_HEX_DEFAULT
+        curve_labels = get_text("curve_smoothness_presets", lang)
+        if isinstance(curve_labels, dict):
+            selected_label = curve_labels.get(settings["curve_smoothness"])
+            if selected_label:
+                st.caption(f"{settings['curve_smoothness']}: {selected_label}")
 
-        settings["stop_quality"] = st.slider(
-            get_text("mesh_stop_quality_label", lang),
-            min_value=1.0,
-            max_value=40.0,
-            value=float(MeshConfig.TRIWILD_STOP_QUALITY),
-            step=1.0,
-        )
         settings["edge_length_r"] = st.slider(
             get_text("mesh_edge_length_r_label", lang),
-            min_value=0.02,
-            max_value=0.20,
+            min_value=0.10,
+            max_value=1.00,
             value=float(MeshConfig.TRIWILD_EDGE_LENGTH_R),
-            step=0.01,
+            step=0.05,
+            help=get_text("mesh_edge_length_r_help", lang),
         )
-        settings["target_edge_len_enabled"] = st.checkbox(
-            get_text("mesh_target_edge_len_enable", lang),
-            value=MeshConfig.TRIWILD_TARGET_EDGE_LEN > 0.0,
-        )
-        if settings["target_edge_len_enabled"]:
-            settings["target_edge_len"] = st.slider(
-                get_text("mesh_target_edge_len_label", lang),
-                min_value=0.005,
-                max_value=0.10,
-                value=(
-                    float(MeshConfig.TRIWILD_TARGET_EDGE_LEN)
-                    if MeshConfig.TRIWILD_TARGET_EDGE_LEN > 0.0
-                    else 0.04
-                ),
-                step=0.005,
-            )
-        else:
-            settings["target_edge_len"] = -1.0
-
         return settings
 
     @staticmethod
-    def apply_triwild_settings(
-        *, stop_quality: float, edge_length_r: float, target_edge_len: float
-    ) -> None:
+    def apply_curve_smoothness_settings(curve_smoothness: int) -> None:
+        """SVG曲線のプリセット精度を MeshConfig に反映する。"""
+        preset = CURVE_SMOOTHNESS_PRESETS.get(
+            int(curve_smoothness), CURVE_SMOOTHNESS_PRESETS[CURVE_SMOOTHNESS_DEFAULT]
+        )
+        MeshConfig.SVG_CURVE_SAMPLE_ERROR = float(preset["error"])
+        MeshConfig.SVG_CURVE_SAMPLE_MIN_DEPTH = int(preset["min_depth"])
+        MeshConfig.SVG_CURVE_SAMPLE_MAX_DEPTH = int(preset["max_depth"])
+
+    @staticmethod
+    def apply_triwild_settings(*, edge_length_r: float) -> None:
         """TriWild関連のメッシュ設定を MeshConfig に反映する。"""
-        MeshConfig.TRIWILD_STOP_QUALITY = float(stop_quality)
+        MeshConfig.TRIWILD_STOP_QUALITY = 10.0
         MeshConfig.TRIWILD_EDGE_LENGTH_R = float(edge_length_r)
-        MeshConfig.TRIWILD_TARGET_EDGE_LEN = float(target_edge_len)
+        MeshConfig.TRIWILD_TARGET_EDGE_LEN = -1.0
 
     @staticmethod
     def polygon_signed_area(points: np.ndarray) -> float:
@@ -1259,9 +1259,10 @@ class MeshPipeline:
         plane_template: dict[str, Any],
         triangle_template: dict[str, Any],
         folder_obj: dict[str, Any],
-        color: dict[str, float],
+        colors: list[dict[str, float]],
         reconstruction_max_abs_tol: float = MeshConfig.RECONSTRUCTION_MAX_ABS_TOL,
         y_offset: float = 0.0,
+        y_offsets: list[float] | None = None,
     ) -> tuple[list[dict[str, Any]], int, int, dict[str, float], list[dict[str, Any]]]:
         """文字単位でメッシュ三角形フォルダと統計情報を構築する。"""
         solver = TriangleSolverOptimized(MeshConfig.SOURCE_TRIANGLE)
@@ -1286,14 +1287,22 @@ class MeshPipeline:
             triangles = triangles_per_char[idx]
             triangle_objects: list[dict[str, Any]] = []
             folder_x = float(char_data["folder_x"])
+            current_folder_y_offset = (
+                float(y_offsets[idx])
+                if y_offsets is not None and idx < len(y_offsets)
+                else 0.0
+            )
+            current_triangle_y_offset = (
+                0.0 if y_offsets is not None else float(y_offset)
+            )
             for triangle in triangles:
                 triangle_object, solved = MeshPipeline.create_sheared_triangle(
                     plane_template,
                     triangle_template,
                     triangle,
-                    color,
+                    colors[idx],
                     solver,
-                    y_offset=y_offset,
+                    y_offset=current_triangle_y_offset,
                     reconstruction_max_abs_tol=reconstruction_max_abs_tol,
                 )
                 shifted_triangle = triangle.copy()
@@ -1344,6 +1353,7 @@ class MeshPipeline:
             char_folder = copy.deepcopy(folder_obj)
             char_folder["data"]["name"] = f"Shape_{idx + 1}_{label}"
             char_folder["data"]["position"]["x"] = folder_x
+            char_folder["data"]["position"]["y"] = current_folder_y_offset
             char_folder["data"]["child"] = triangle_objects
             char_folder["data"]["treeState"] = 1
             char_folders.append(char_folder)
@@ -1421,7 +1431,7 @@ class MeshPipeline:
 
         def project(point: np.ndarray) -> tuple[float, float]:
             """ワールド座標をプレビュー画像座標へ射影する。"""
-            x = plot_offset_x + (max_x - point[0]) * scale
+            x = plot_offset_x + (point[0] - min_x) * scale
             y = plot_offset_y + (max_y - point[1]) * scale
             return float(x), float(y)
 
@@ -1526,201 +1536,6 @@ class MeshPipeline:
             ):
                 converted.append(normalized)
         return converted
-
-    @staticmethod
-    def build_outline_contours_with_pathops(
-        contours: list[np.ndarray], outline_width: float
-    ) -> list[np.ndarray] | None:
-        """PathOps で縁取りリング輪郭を生成する。"""
-        fill_path = MeshPipeline.contours_to_pathops_path(contours)
-        if fill_path is None:
-            return None
-        try:
-            fill_path.simplify()
-            stroked_path = pathops.Path()
-            stroked_path.addPath(fill_path)
-            stroked_path.stroke(
-                width=float(2.0 * outline_width),
-                cap=pathops.LineCap.BUTT_CAP,
-                join=pathops.LineJoin.MITER_JOIN,
-                miter_limit=4.0,
-            )
-            ring_path = pathops.op(stroked_path, fill_path, pathops.PathOp.DIFFERENCE)
-            ring_path.simplify()
-            return MeshPipeline.pathops_path_to_contours(ring_path)
-        except (ValueError, RuntimeError, FloatingPointError):
-            return None
-
-    @staticmethod
-    def offset_contour_polygon(
-        contour: np.ndarray, offset_distance: float, miter_limit: float = 4.0
-    ) -> np.ndarray | None:
-        """ミター結合を使って輪郭ポリゴンをオフセットする。"""
-        points = MeshPipeline.dedupe_contour_points(
-            np.asarray(contour, dtype=np.float64)
-        )
-        if len(points) < 3:
-            return None
-
-        area = MeshPipeline.polygon_signed_area(points)
-        if abs(area) <= 1e-9:
-            return None
-
-        point_count = len(points)
-        edge_dirs = []
-        outward_normals = []
-        for idx in range(point_count):
-            p0 = points[idx]
-            p1 = points[(idx + 1) % point_count]
-            edge = p1 - p0
-            edge_norm = np.linalg.norm(edge)
-            if edge_norm <= 1e-12:
-                return None
-            edge_dir = edge / edge_norm
-            left_normal = np.array([-edge_dir[1], edge_dir[0]], dtype=np.float64)
-            outward = -left_normal if area > 0 else left_normal
-            edge_dirs.append(edge_dir)
-            outward_normals.append(outward)
-
-        orientation = 1.0 if area > 0 else -1.0
-        max_miter = max(1.0, float(miter_limit)) * abs(float(offset_distance))
-        result_points = []
-
-        for idx in range(point_count):
-            vertex = points[idx]
-            dir_prev = edge_dirs[idx - 1]
-            dir_next = edge_dirs[idx]
-            normal_prev = outward_normals[idx - 1]
-            normal_next = outward_normals[idx]
-
-            cross = dir_prev[0] * dir_next[1] - dir_prev[1] * dir_next[0]
-            is_concave = orientation * cross < -1e-9
-            shifted_prev = vertex + normal_prev * offset_distance
-            shifted_next = vertex + normal_next * offset_distance
-
-            if is_concave:
-                result_points.append(shifted_prev)
-                result_points.append(shifted_next)
-                continue
-
-            denom = dir_prev[0] * dir_next[1] - dir_prev[1] * dir_next[0]
-            if abs(denom) <= 1e-9:
-                candidate = vertex + (normal_prev + normal_next) * 0.5 * offset_distance
-            else:
-                delta = shifted_next - shifted_prev
-                t = (delta[0] * dir_next[1] - delta[1] * dir_next[0]) / denom
-                candidate = shifted_prev + dir_prev * t
-
-            miter_vec = candidate - vertex
-            miter_len = float(np.linalg.norm(miter_vec))
-            if miter_len > max_miter and miter_len > 1e-12:
-                candidate = vertex + (miter_vec / miter_len) * max_miter
-            result_points.append(candidate)
-
-        offset_contour = MeshPipeline.dedupe_contour_points(
-            np.asarray(result_points, dtype=np.float64)
-        )
-        if len(offset_contour) < 3:
-            return None
-        if abs(MeshPipeline.polygon_signed_area(offset_contour)) <= 1e-9:
-            return None
-        return offset_contour
-
-    @staticmethod
-    def build_outline_char_mesh_data(
-        char_mesh_data: list[dict[str, Any]], outline_width: float
-    ) -> list[dict[str, Any]]:
-        """各文字輪郭から縁取り用メッシュ輪郭を構築する。"""
-        expanded_characters: list[dict[str, Any]] = []
-        effective_width = max(0.0, float(outline_width))
-
-        for char_data in char_mesh_data:
-            contours = [
-                np.asarray(contour, dtype=np.float64).copy()
-                for contour in char_data.get("contours", [])
-            ]
-            if effective_width <= 0.0 or not contours:
-                expanded_characters.append(
-                    {
-                        "char": char_data["char"],
-                        "folder_x": float(char_data.get("folder_x", 0.0)),
-                        "contours": contours,
-                    }
-                )
-                continue
-
-            pathops_contours = MeshPipeline.build_outline_contours_with_pathops(
-                contours, effective_width
-            )
-            if pathops_contours:
-                expanded_characters.append(
-                    {
-                        "char": char_data["char"],
-                        "folder_x": float(char_data.get("folder_x", 0.0)),
-                        "contours": pathops_contours,
-                    }
-                )
-                continue
-
-            valid_contours = []
-            valid_original_indices = []
-            for contour_index, contour in enumerate(contours):
-                normalized = MeshPipeline.dedupe_contour_points(contour)
-                if (
-                    len(normalized) >= 3
-                    and abs(MeshPipeline.polygon_signed_area(normalized)) > 1e-9
-                ):
-                    valid_contours.append(normalized)
-                    valid_original_indices.append(contour_index)
-
-            depth_map: dict[int, int] = {}
-            if valid_contours:
-                _, depths = MeshPipeline.build_contour_hierarchy(valid_contours)
-                for local_index, original_index in enumerate(valid_original_indices):
-                    depth_map[original_index] = depths[local_index]
-
-            expanded_contours = []
-            for contour_index, contour in enumerate(contours):
-                normalized_contour = MeshPipeline.dedupe_contour_points(contour)
-                if (
-                    len(normalized_contour) < 3
-                    or abs(MeshPipeline.polygon_signed_area(normalized_contour)) <= 1e-9
-                ):
-                    continue
-
-                depth = depth_map.get(contour_index, 0)
-                offset_distance = (
-                    effective_width if depth % 2 == 0 else -effective_width
-                )
-                normalized_offset = MeshPipeline.offset_contour_polygon(
-                    normalized_contour, offset_distance
-                )
-                if normalized_offset is None:
-                    continue
-
-                if depth % 2 == 0:
-                    outer_ring = normalized_offset
-                    inner_ring = normalized_contour
-                else:
-                    outer_ring = normalized_contour
-                    inner_ring = normalized_offset
-
-                probe = np.mean(inner_ring, axis=0)
-                if not MeshPipeline.point_in_polygon(probe, outer_ring):
-                    continue
-
-                expanded_contours.append(outer_ring)
-                expanded_contours.append(inner_ring)
-
-            expanded_characters.append(
-                {
-                    "char": char_data["char"],
-                    "folder_x": float(char_data.get("folder_x", 0.0)),
-                    "contours": expanded_contours,
-                }
-            )
-
-        return expanded_characters
 
     @staticmethod
     def render_generation_feedback(mesh_stats: dict[str, Any], lang: str) -> None:
@@ -1848,27 +1663,109 @@ def resolve_svg_stroke_style(
     return float(stroke_width), linecap, linejoin, float(miter_limit)
 
 
-def sample_segment_points(segment: Any, target_length: float) -> list[np.ndarray]:
-    """セグメントを目標長で分割してサンプル点列を返す。"""
+def extract_svg_element_color(
+    element: Any, is_stroke: bool = False
+) -> dict[str, float] | None:
+    """SVG要素のfill/stroke色を rgba dict で返す。取得できなければ None。"""
+    paint = getattr(element, "stroke" if is_stroke else "fill", None)
+    if paint is None:
+        return None
     try:
-        length = float(segment.length())
+        r = getattr(paint, "red", None)
+        g = getattr(paint, "green", None)
+        b = getattr(paint, "blue", None)
+        if r is not None and g is not None and b is not None:
+            return {
+                "r": float(r) / 255.0,
+                "g": float(g) / 255.0,
+                "b": float(b) / 255.0,
+                "a": 1.0,
+            }
+        color_str = str(paint).strip()
+        if color_str.startswith("#"):
+            return hex_to_color(color_str)
     except Exception:
-        length = 0.0
-    if not np.isfinite(length):
-        length = 0.0
+        pass
+    return None
 
-    effective_length = max(1e-4, float(target_length))
-    steps = max(1, int(math.ceil(length / effective_length)))
-    points = []
-    for step in range(1, steps + 1):
-        t = step / steps
-        p = segment.point(t)
-        points.append(point_to_np(p))
+
+SVG_CURVE_SEGMENT_TYPES = (Arc, CubicBezier, QuadraticBezier)
+
+
+def segment_point_to_np(segment: Any, t: float) -> np.ndarray:
+    """セグメント上のパラメータ t を NumPy 座標へ変換する。"""
+    return point_to_np(segment.point(float(t)))
+
+
+def should_split_svg_curve(
+    segment: Any,
+    start_t: float,
+    end_t: float,
+    start_point: np.ndarray,
+    end_point: np.ndarray,
+    error: float,
+    depth: int,
+) -> bool:
+    """wildmeshing の曲線サンプリングと同じ弦長誤差で分割可否を判定する。"""
+    if depth < MeshConfig.SVG_CURVE_SAMPLE_MIN_DEPTH:
+        return True
+    if depth >= MeshConfig.SVG_CURVE_SAMPLE_MAX_DEPTH:
+        return False
+
+    chord_length = float(np.linalg.norm(end_point - start_point))
+    mid_t = 0.5 * (start_t + end_t)
+    mid_point = segment_point_to_np(segment, mid_t)
+    split_length = float(
+        np.linalg.norm(mid_point - start_point) + np.linalg.norm(end_point - mid_point)
+    )
+    return abs(split_length - chord_length) > error
+
+
+def sample_curve_segment_points(segment: Any, error: float) -> list[np.ndarray]:
+    """曲線セグメントを誤差ベースで再帰分割して終点を含む点列にする。"""
+    points: list[np.ndarray] = []
+
+    def recurse(
+        start_t: float,
+        end_t: float,
+        start_point: np.ndarray,
+        end_point: np.ndarray,
+        depth: int,
+    ) -> None:
+        if should_split_svg_curve(
+            segment=segment,
+            start_t=start_t,
+            end_t=end_t,
+            start_point=start_point,
+            end_point=end_point,
+            error=error,
+            depth=depth,
+        ):
+            mid_t = 0.5 * (start_t + end_t)
+            mid_point = segment_point_to_np(segment, mid_t)
+            recurse(start_t, mid_t, start_point, mid_point, depth + 1)
+            recurse(mid_t, end_t, mid_point, end_point, depth + 1)
+            return
+        points.append(end_point)
+
+    start_point = segment_point_to_np(segment, 0.0)
+    end_point = segment_point_to_np(segment, 1.0)
+    recurse(0.0, 1.0, start_point, end_point, 0)
     return points
 
 
+def sample_segment_points(segment: Any) -> list[np.ndarray]:
+    """セグメントをポリライン化して、始点を除くサンプル点列を返す。"""
+    if isinstance(segment, SVG_CURVE_SEGMENT_TYPES):
+        return sample_curve_segment_points(
+            segment,
+            error=MeshConfig.SVG_CURVE_SAMPLE_ERROR,
+        )
+    return [segment_point_to_np(segment, 1.0)]
+
+
 def path_to_contours(
-    path_obj: SVGPath, segment_length: float, auto_close_open_paths: bool
+    path_obj: SVGPath, auto_close_open_paths: bool
 ) -> list[np.ndarray]:
     """1つの SVG パスを有効な輪郭列へ変換する。"""
     contours: list[np.ndarray] = []
@@ -1916,7 +1813,7 @@ def path_to_contours(
                 if end is not None:
                     current_points = [point_to_np(end)]
 
-        sampled = sample_segment_points(segment, segment_length)
+        sampled = sample_segment_points(segment)
         if sampled:
             current_points.extend(sampled)
             has_draw_segment = True
@@ -1927,7 +1824,7 @@ def path_to_contours(
     return contours
 
 
-def svg_path_to_pathops_path(path_obj: SVGPath, segment_length: float) -> Any | None:
+def svg_path_to_pathops_path(path_obj: SVGPath) -> Any | None:
     """SVGパスをPathOpsの開閉サブパスに変換する。"""
     path = pathops.Path()
     has_path = False
@@ -1979,7 +1876,7 @@ def svg_path_to_pathops_path(path_obj: SVGPath, segment_length: float) -> Any | 
                 if end is not None:
                     current_points = [point_to_np(end)]
 
-        sampled = sample_segment_points(segment, segment_length)
+        sampled = sample_segment_points(segment)
         if sampled:
             current_points.extend(sampled)
             has_draw_segment = True
@@ -1992,7 +1889,6 @@ def svg_path_to_pathops_path(path_obj: SVGPath, segment_length: float) -> Any | 
 
 def stroke_path_to_contours(
     path_obj: SVGPath,
-    segment_length: float,
     stroke_width: float,
     linecap: Any,
     linejoin: Any,
@@ -2002,7 +1898,7 @@ def stroke_path_to_contours(
     if stroke_width <= 1e-9:
         return []
 
-    source_path = svg_path_to_pathops_path(path_obj, segment_length)
+    source_path = svg_path_to_pathops_path(path_obj)
     if source_path is None:
         return []
 
@@ -2032,12 +1928,11 @@ def stroke_path_to_contours(
 
 def svg_bytes_to_contours(
     svg_bytes: bytes,
-    segment_length: float,
     auto_close_open_paths: bool,
-) -> list[np.ndarray]:
-    """SVG バイト列から全要素の輪郭を抽出する。"""
+) -> list[tuple[list[np.ndarray], dict[str, float] | None]]:
+    """SVG バイト列から要素ごとの輪郭と色を抽出する。"""
     svg = SVG.parse(io.BytesIO(svg_bytes))
-    contours: list[np.ndarray] = []
+    groups: list[tuple[list[np.ndarray], dict[str, float] | None]] = []
     for element in svg.elements():
         try:
             path_obj = SVGPath(element)
@@ -2046,34 +1941,41 @@ def svg_bytes_to_contours(
         if len(path_obj) == 0:
             continue
         if resolve_svg_fill_enabled(element):
-            contours.extend(
-                path_to_contours(
-                    path_obj=path_obj,
-                    segment_length=segment_length,
-                    auto_close_open_paths=auto_close_open_paths,
-                )
+            fill_contours = path_to_contours(
+                path_obj=path_obj,
+                auto_close_open_paths=auto_close_open_paths,
             )
+            if fill_contours:
+                groups.append(
+                    (fill_contours, extract_svg_element_color(element, is_stroke=False))
+                )
         stroke_style = resolve_svg_stroke_style(element)
         if stroke_style is not None:
             stroke_width, linecap, linejoin, miter_limit = stroke_style
-            contours.extend(
-                stroke_path_to_contours(
-                    path_obj=path_obj,
-                    segment_length=segment_length,
-                    stroke_width=stroke_width,
-                    linecap=linecap,
-                    linejoin=linejoin,
-                    miter_limit=miter_limit,
-                )
+            stroke_contours = stroke_path_to_contours(
+                path_obj=path_obj,
+                stroke_width=stroke_width,
+                linecap=linecap,
+                linejoin=linejoin,
+                miter_limit=miter_limit,
             )
-    return contours
+            if stroke_contours:
+                groups.append(
+                    (
+                        stroke_contours,
+                        extract_svg_element_color(element, is_stroke=True),
+                    )
+                )
+    return groups
 
 
 def build_svg_mesh_data(
-    contours: list[np.ndarray], target_height: float
+    colored_groups: list[tuple[list[np.ndarray], dict[str, float] | None]],
+    target_height: float,
 ) -> list[dict[str, Any]]:
-    """輪郭群を高さ基準で正規化したメッシュ入力へ変換する。"""
-    all_points = np.vstack(contours)
+    """要素ごとの輪郭と色を高さ基準で正規化したメッシュ入力へ変換する。"""
+    all_contours = [c for group, _ in colored_groups for c in group]
+    all_points = np.vstack(all_contours)
     min_x = float(np.min(all_points[:, 0]))
     max_x = float(np.max(all_points[:, 0]))
     min_y = float(np.min(all_points[:, 1]))
@@ -2084,20 +1986,52 @@ def build_svg_mesh_data(
     center_x = 0.5 * (min_x + max_x)
     center_y = 0.5 * (min_y + max_y)
 
-    transformed = []
-    for contour in contours:
+    def transform(contour: np.ndarray) -> np.ndarray:
         out = np.empty_like(contour)
-        out[:, 0] = -(contour[:, 0] - center_x) * scale
+        out[:, 0] = (contour[:, 0] - center_x) * scale
         out[:, 1] = -(contour[:, 1] - center_y) * scale
-        transformed.append(out)
+        return out
 
-    return [{"char": "SVG", "folder_x": 0.0, "contours": transformed}]
+    return [
+        {
+            "char": "SVG",
+            "folder_x": 0.0,
+            "contours": [transform(c) for c in group],
+            "svg_color": svg_color,
+        }
+        for group, svg_color in colored_groups
+    ]
+
+
+def rgba_dict_to_tuple(
+    color: dict[str, float] | None, fallback: tuple[int, int, int, int]
+) -> tuple[int, int, int, int]:
+    """0-1 RGBA 辞書を Pillow 用 0-255 タプルへ変換する。"""
+    if color is None:
+        return fallback
+    return (
+        int(np.clip(float(color.get("r", 0.0)), 0.0, 1.0) * 255),
+        int(np.clip(float(color.get("g", 0.0)), 0.0, 1.0) * 255),
+        int(np.clip(float(color.get("b", 0.0)), 0.0, 1.0) * 255),
+        int(np.clip(float(color.get("a", 1.0)), 0.0, 1.0) * 255),
+    )
 
 
 def build_source_preview(
-    contours: list[np.ndarray], width: int = 900, height: int = 360, padding: int = 24
+    colored_groups: list[tuple[list[np.ndarray], dict[str, float] | None]],
+    *,
+    fallback_color: dict[str, float] | None = None,
+    use_svg_color: bool = True,
+    force_opaque_shapes: bool = False,
+    width: int = 900,
+    height: int = 360,
+    padding: int = 24,
 ) -> Image.Image | None:
     """入力輪郭のプレビュー画像を生成する。"""
+    if not colored_groups:
+        return None
+
+    contours = [c for group, _ in colored_groups for c in group]
     if not contours:
         return None
 
@@ -2109,12 +2043,19 @@ def build_source_preview(
 
     span_x = max(1e-6, max_x - min_x)
     span_y = max(1e-6, max_y - min_y)
-    scale = min((width - 2 * padding) / span_x, (height - 2 * padding) / span_y)
+    supersample = 3
+    draw_width = width * supersample
+    draw_height = height * supersample
+    draw_padding = padding * supersample
+    scale = min(
+        (draw_width - 2 * draw_padding) / span_x,
+        (draw_height - 2 * draw_padding) / span_y,
+    )
     if not np.isfinite(scale) or scale <= 0:
         scale = 1.0
 
-    origin_x = (width - span_x * scale) * 0.5
-    origin_y = (height - span_y * scale) * 0.5
+    origin_x = (draw_width - span_x * scale) * 0.5
+    origin_y = (draw_height - span_y * scale) * 0.5
 
     def project(point: np.ndarray) -> tuple[float, float]:
         """輪郭座標をソースプレビュー画像座標へ変換する。"""
@@ -2122,14 +2063,60 @@ def build_source_preview(
         y = origin_y + (point[1] - min_y) * scale
         return float(x), float(y)
 
-    image = Image.new("RGBA", (width, height), (20, 24, 32, 255))
+    background = (246, 247, 248, 255)
+    default_shape_fill = (51, 65, 85, 235)
+    fallback_fill = rgba_dict_to_tuple(fallback_color, default_shape_fill)
+    image = Image.new("RGBA", (draw_width, draw_height), background)
     draw = ImageDraw.Draw(image, "RGBA")
-    for contour in contours:
-        projected = [project(p) for p in contour]
-        if len(projected) < 3:
+
+    for group_contours, svg_color in colored_groups:
+        normalized_contours = [
+            MeshPipeline.dedupe_contour_points(np.asarray(contour, dtype=np.float64))
+            for contour in group_contours
+        ]
+        normalized_contours = [
+            contour
+            for contour in normalized_contours
+            if len(contour) >= 3
+            and abs(MeshPipeline.polygon_signed_area(contour)) > 1e-9
+        ]
+        if not normalized_contours:
             continue
-        draw.polygon(projected, fill=(72, 140, 214, 96), outline=(164, 222, 255, 230))
-    return image
+
+        _, depths = MeshPipeline.build_contour_hierarchy(normalized_contours)
+        draw_order = sorted(
+            range(len(normalized_contours)),
+            key=lambda idx: (
+                depths[idx],
+                -abs(MeshPipeline.polygon_signed_area(normalized_contours[idx])),
+            ),
+        )
+        shape_fill = (
+            rgba_dict_to_tuple(svg_color, fallback_fill)
+            if use_svg_color
+            else fallback_fill
+        )
+        if force_opaque_shapes:
+            shape_fill = (*shape_fill[:3], 255)
+
+        for contour_index in draw_order:
+            contour = normalized_contours[contour_index]
+            projected = [project(p) for p in contour]
+            if len(projected) < 3:
+                continue
+            is_hole = depths[contour_index] % 2 == 1
+            fill = background if is_hole else shape_fill
+            draw.polygon(projected, fill=fill)
+    return image.resize((width, height), Image.Resampling.LANCZOS)
+
+
+def make_opaque_image(
+    image: Image.Image, background: tuple[int, int, int, int] = (246, 247, 248, 255)
+) -> Image.Image:
+    """RGBA画像を背景色に合成して不透明化する。"""
+    rgba = image.convert("RGBA")
+    base = Image.new("RGBA", rgba.size, background)
+    return Image.alpha_composite(base, rgba).convert("RGB")
 
 
 def build_svg_scene(
@@ -2139,15 +2126,29 @@ def build_svg_scene(
     triangle_template: dict[str, Any],
     folder_key: int,
     folder_obj: dict[str, Any],
-    color: dict[str, float],
+    use_svg_color: bool,
+    fallback_color: dict[str, float],
+    color_alpha: float,
     svg_mesh_data: list[dict[str, Any]],
-    outline_width: float,
-    outline_color: dict[str, float],
-    outline_y_offset: float,
     generation_metadata: dict[str, Any],
+    scene_root_name: str,
     lang: str,
 ) -> tuple[HoneycomeSceneData, int, int, dict[str, Any], Image.Image | None]:
     """メッシュ生成結果とメタデータをまとめてシーンを構築する。"""
+    n = len(svg_mesh_data)
+    labels = [f"SVG_{i + 1}" for i in range(n)]
+    y_offsets = [-(n - 1 - idx) * 0.001 for idx in range(n)]
+
+    if use_svg_color:
+        colors = []
+        for entry in svg_mesh_data:
+            c = entry.get("svg_color") or fallback_color
+            c = dict(c)
+            c["a"] = color_alpha
+            colors.append(c)
+    else:
+        colors = [fallback_color] * n
+
     (
         char_folders,
         plane_count,
@@ -2155,78 +2156,24 @@ def build_svg_scene(
         mesh_stats,
         triangle_status_records,
     ) = MeshPipeline.build_mesh_char_folders(
-        ["SVG"],
+        labels,
         svg_mesh_data,
         plane_template,
         triangle_template,
         folder_obj,
-        color,
+        colors,
+        y_offsets=y_offsets,
     )
 
-    outline_char_folders: list[dict[str, Any]] = []
-    outline_plane_count = 0
-    outline_raw_plane_count = 0
-    outline_mesh_stats = {
-        "solve_failed_count": 0.0,
-        "reconstruction_failed_count": 0.0,
-        "reconstruction_tol": MeshConfig.RECONSTRUCTION_MAX_ABS_TOL,
-        "accepted_max_abs_error": 0.0,
-        "accepted_rmse": 0.0,
-    }
-
-    if outline_width > 0.0:
-        outline_mesh_data = MeshPipeline.build_outline_char_mesh_data(
-            svg_mesh_data, outline_width
-        )
-        (
-            outline_char_folders,
-            outline_plane_count,
-            outline_raw_plane_count,
-            outline_mesh_stats,
-            _,
-        ) = MeshPipeline.build_mesh_char_folders(
-            ["SVG"],
-            outline_mesh_data,
-            plane_template,
-            triangle_template,
-            folder_obj,
-            outline_color,
-            y_offset=outline_y_offset,
-        )
-
     scene_children: list[dict[str, Any]] = []
-    if outline_char_folders and outline_plane_count > 0:
-        outline_group = copy.deepcopy(folder_obj)
-        outline_group["data"]["name"] = get_text("outline_folder", lang)
-        outline_group["data"]["treeState"] = 1
-        outline_group["data"]["child"] = outline_char_folders
-        scene_children.append(outline_group)
     scene_children.extend(char_folders)
 
-    total_accepted = plane_count + outline_plane_count
-    total_raw = raw_plane_count + outline_raw_plane_count
-    weighted_rmse = 0.0
-    if total_accepted > 0:
-        weighted_rmse = (
-            float(mesh_stats["accepted_rmse"]) * plane_count
-            + float(outline_mesh_stats["accepted_rmse"]) * outline_plane_count
-        ) / total_accepted
-
     merged_mesh_stats = {
-        "solve_failed_count": int(
-            mesh_stats["solve_failed_count"] + outline_mesh_stats["solve_failed_count"]
-        ),
-        "reconstruction_failed_count": int(
-            mesh_stats["reconstruction_failed_count"]
-            + outline_mesh_stats["reconstruction_failed_count"]
-        ),
+        "solve_failed_count": int(mesh_stats["solve_failed_count"]),
+        "reconstruction_failed_count": int(mesh_stats["reconstruction_failed_count"]),
         "reconstruction_tol": float(mesh_stats["reconstruction_tol"]),
-        "accepted_max_abs_error": max(
-            float(mesh_stats["accepted_max_abs_error"]),
-            float(outline_mesh_stats["accepted_max_abs_error"]),
-        ),
-        "accepted_rmse": float(weighted_rmse),
-        "outline_width": float(outline_width),
+        "accepted_max_abs_error": float(mesh_stats["accepted_max_abs_error"]),
+        "accepted_rmse": float(mesh_stats["accepted_rmse"]),
     }
 
     triangulation_preview = MeshPipeline.build_mesh_triangulation_preview(
@@ -2234,13 +2181,14 @@ def build_svg_scene(
     )
 
     scene = copy.deepcopy(template_scene)
+    scene.title = scene_root_name
     new_folder = copy.deepcopy(folder_obj)
-    new_folder["data"]["name"] = get_text("scene_root", lang)
+    new_folder["data"]["name"] = scene_root_name
     metadata_folder = build_metadata_folder(folder_obj, generation_metadata, lang)
     new_folder["data"]["child"] = [metadata_folder] + scene_children
     scene.objects = {folder_key: new_folder}
 
-    return scene, total_accepted, total_raw, merged_mesh_stats, triangulation_preview
+    return scene, plane_count, raw_plane_count, merged_mesh_stats, triangulation_preview
 
 
 def sanitize_stem(name: str) -> str:
@@ -2251,9 +2199,9 @@ def sanitize_stem(name: str) -> str:
 
 
 def main() -> None:
-    """SVG インポーターの Streamlit アプリ本体を実行する。"""
+    """SVG ビルダーの Streamlit アプリ本体を実行する。"""
     st.set_page_config(
-        page_title="Digital Craft SVG Importer / デジクラ SVG インポーター",
+        page_title="Digital Craft SVG Builder / デジクラ SVG ビルダー",
         page_icon="🧩",
         layout="wide",
     )
@@ -2261,7 +2209,10 @@ def main() -> None:
     lang = st.session_state.get("lang", "ja")
 
     st.title(f"🧩 {get_text('title', lang)}")
-    st.caption(get_text("subtitle", lang))
+    st.markdown(get_text("subtitle", lang))
+
+    with st.expander(f"❓ {get_text('qa_title', lang)}", expanded=False):
+        st.markdown(get_text("qa_content", lang).strip())
 
     uploaded_svg = st.file_uploader(get_text("upload_label", lang), type=["svg"])
     if uploaded_svg is None:
@@ -2270,7 +2221,15 @@ def main() -> None:
 
     svg_bytes = uploaded_svg.getvalue()
 
-    color_hex = st.color_picker(get_text("color_label", lang), value="#FFFFFF")
+    use_svg_color = st.checkbox(
+        get_text("use_svg_color_label", lang),
+        value=True,
+        help=get_text("use_svg_color_help", lang),
+    )
+    if not use_svg_color:
+        color_hex = st.color_picker(get_text("color_label", lang), value="#FFFFFF")
+    else:
+        color_hex = "#FFFFFF"
     color_alpha = st.slider(
         get_text("alpha_label", lang),
         min_value=0.0,
@@ -2285,11 +2244,9 @@ def main() -> None:
         value=0.5,
         step=0.01,
     )
-    auto_close_open_paths = st.checkbox(
-        get_text("auto_close_label", lang),
-        value=True,
-        help=get_text("auto_close_help", lang),
-    )
+    with st.expander(get_text("text_size_example", lang), expanded=False):
+        st.text(get_text("size_help", lang))
+        st.markdown("![font size example](https://i.imgur.com/wbhZ8Gd.jpeg)")
 
     mesh_settings = MeshPipeline.default_advanced_settings()
     with st.expander(get_text("advanced_settings", lang), expanded=False):
@@ -2308,22 +2265,30 @@ def main() -> None:
             step=0.05,
         )
 
+    MeshPipeline.apply_curve_smoothness_settings(int(mesh_settings["curve_smoothness"]))
+
     try:
         source_contours = svg_bytes_to_contours(
             svg_bytes=svg_bytes,
-            segment_length=float(mesh_settings["flatten_segment_length"]),
-            auto_close_open_paths=auto_close_open_paths,
+            auto_close_open_paths=True,
         )
     except Exception as exc:
         st.error(get_text("parse_error", lang).format(error=exc))
         st.exception(exc)
         st.stop()
 
-    if not source_contours:
+    flat_source_contours = [c for group, _ in source_contours for c in group]
+    if not flat_source_contours:
         st.error(get_text("no_contours", lang))
         st.stop()
 
-    source_preview = build_source_preview(source_contours)
+    preview_fallback_color = hex_to_color(color_hex)
+    preview_fallback_color["a"] = color_alpha
+    source_preview = build_source_preview(
+        source_contours,
+        fallback_color=preview_fallback_color,
+        use_svg_color=use_svg_color,
+    )
     if source_preview is not None:
         st.subheader(get_text("input_preview_title", lang))
         st.image(source_preview, width="stretch")
@@ -2358,15 +2323,19 @@ def main() -> None:
     }
 
     MeshPipeline.apply_triwild_settings(
-        stop_quality=float(mesh_settings["stop_quality"]),
         edge_length_r=float(mesh_settings["edge_length_r"]),
-        target_edge_len=float(mesh_settings["target_edge_len"]),
     )
 
     color = hex_to_color(color_hex)
     color["a"] = color_alpha
-    outline_color = hex_to_color(str(mesh_settings["outline_color_hex"]))
-    outline_color["a"] = 1.0
+
+    curve_labels = get_text("curve_smoothness_presets", lang)
+    curve_smoothness_label = str(mesh_settings["curve_smoothness"])
+    if isinstance(curve_labels, dict):
+        curve_smoothness_label = (
+            f"{mesh_settings['curve_smoothness']}: "
+            f"{curve_labels.get(mesh_settings['curve_smoothness'], '')}"
+        ).strip()
 
     generation_metadata = {
         get_text("meta_source", lang): uploaded_svg.name,
@@ -2377,18 +2346,16 @@ def main() -> None:
             f"plane_preset_{plane_preset_key}", lang
         ),
         get_text("meta_light_influence", lang): light_cancel,
-        get_text("meta_flatten_segment_length", lang): mesh_settings[
-            "flatten_segment_length"
-        ],
-        get_text("meta_stop_quality", lang): mesh_settings["stop_quality"],
+        get_text("meta_curve_smoothness", lang): curve_smoothness_label,
         get_text("meta_edge_length_r", lang): mesh_settings["edge_length_r"],
-        get_text("meta_target_edge_len", lang): mesh_settings["target_edge_len"],
-        get_text("meta_outline_enabled", lang): bool(mesh_settings["outline_enabled"]),
-        get_text("meta_outline_width", lang): mesh_settings["outline_width"],
-        get_text("meta_outline_color", lang): mesh_settings["outline_color_hex"],
     }
 
-    svg_mesh_data = build_svg_mesh_data(source_contours, target_height=text_height)
+    svg_mesh_data = build_svg_mesh_data(
+        source_contours, target_height=text_height * SVG_SCENE_HEIGHT_FACTOR
+    )
+    scene_root_name = (
+        f"{get_text('scene_root', lang)}: {sanitize_stem(uploaded_svg.name)}"
+    )
 
     with st.spinner(get_text("generating", lang)):
         scene, plane_count, raw_plane_count, mesh_stats, triangulation_preview = (
@@ -2398,12 +2365,12 @@ def main() -> None:
                 triangle_template=triangle_template,
                 folder_key=folder_key,
                 folder_obj=folder_obj,
-                color=color,
+                use_svg_color=use_svg_color,
+                fallback_color=color,
+                color_alpha=color_alpha,
                 svg_mesh_data=svg_mesh_data,
-                outline_width=float(mesh_settings["outline_width"]),
-                outline_color=outline_color,
-                outline_y_offset=MeshConfig.OUTLINE_Y_OFFSET_DEFAULT,
                 generation_metadata=generation_metadata,
+                scene_root_name=scene_root_name,
                 lang=lang,
             )
         )
@@ -2418,14 +2385,24 @@ def main() -> None:
     )
     MeshPipeline.render_triangulation_section(triangulation_preview, lang)
 
-    thumb = (
-        triangulation_preview if triangulation_preview is not None else source_preview
+    scene_image = build_source_preview(
+        source_contours,
+        fallback_color=color,
+        use_svg_color=use_svg_color,
+        force_opaque_shapes=True,
+        width=1280,
+        height=720,
+        padding=64,
     )
-    if thumb is None:
-        thumb = Image.new("RGBA", (512, 320), (20, 20, 20, 255))
+    if scene_image is None:
+        scene_image = (
+            source_preview if source_preview is not None else triangulation_preview
+        )
+    if scene_image is None:
+        scene_image = Image.new("RGBA", (1280, 720), (20, 20, 20, 255))
 
     preview_buf = io.BytesIO()
-    thumb.save(preview_buf, format="PNG")
+    make_opaque_image(scene_image).save(preview_buf, format="PNG")
     scene.image = preview_buf.getvalue()
 
     filename = f"digitalcraft_scene_svg_{sanitize_stem(uploaded_svg.name)}.png"
