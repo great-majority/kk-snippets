@@ -18,7 +18,6 @@ from kkloader import (
     SummerVacationCharaData as svcd,
 )
 from kkloader.funcs import get_png, load_length, load_type
-from kkloader.KoikatuCharaData import BlockData
 
 # ========================================
 # i18n対応: 多言語辞書
@@ -166,7 +165,7 @@ file = st.file_uploader(get_text("file_uploader", lang))
 if file is not None:
     try:
         kch = KoikatuCharaHeader.load(file.getvalue())
-    except Exception as e:
+    except Exception:
         st.error(get_text("error_load", lang), icon="🚨")
         # st.write(e)
         st.stop()

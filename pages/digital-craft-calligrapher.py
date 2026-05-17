@@ -70,10 +70,8 @@ TRANSLATIONS = {
         "meta_plane_type": "平面タイプ",
         "meta_light_influence": "ライト影響度",
         "meta_render_mode": "生成方式",
-        "meta_mesh_flatten_length": "メッシュ線分長",
-        "meta_mesh_stop_quality": "メッシュ stop_quality",
-        "meta_mesh_edge_length_r": "メッシュ edge_length_r",
-        "meta_mesh_target_edge_len": "メッシュ target_edge_len",
+        "meta_mesh_flatten_length": "曲線の粗さ",
+        "meta_mesh_edge_length_r": "三角形の粗さ",
         "meta_mesh_outline_enabled": "メッシュ縁取り",
         "meta_mesh_outline_width": "メッシュ縁取り幅",
         "meta_mesh_outline_color": "メッシュ縁取り色",
@@ -110,15 +108,10 @@ TRANSLATIONS = {
         "render_mode_help": "ドット平面で作るか、三角形メッシュで作るかを選びます。",
         "render_mode_dot": "ドット(平面)",
         "render_mode_mesh": "メッシュ(三角形)",
-        "mesh_flatten_length_label": "メッシュ線分長",
-        "mesh_flatten_length_help": "値を小さくすると曲線を細かく分割し、三角形の数が増えて重くなります。",
-        "mesh_stop_quality_label": "メッシュ品質しきい値(stop_quality)",
-        "mesh_stop_quality_help": "大きいほど早く止まりやすく軽くなり、小さいほど重くなりやすいです。",
-        "mesh_edge_length_r_label": "メッシュ辺長比(edge_length_r)",
-        "mesh_edge_length_r_help": "大きいほど粗く軽く、小さいほど細かく重くなります。",
-        "mesh_target_edge_len_enable": "絶対辺長(target_edge_len)を使う",
-        "mesh_target_edge_len_label": "絶対辺長(target_edge_len)",
-        "mesh_target_edge_len_help": "有効時のみ使用。小さいほど三角形が増えます。",
+        "mesh_flatten_length_label": "曲線の粗さ",
+        "mesh_flatten_length_help": "値を大きくすると曲線が粗くなり、三角形の数が減って軽くなります。",
+        "mesh_edge_length_r_label": "三角形の粗さ",
+        "mesh_edge_length_r_help": "大きいほど三角形が少なくなり、小さいほど細かくなります。",
         "mesh_outline_enable_label": "縁取りを有効化",
         "mesh_outline_enable_help": "ONにすると、文字の背面に縁取りメッシュを追加します。",
         "mesh_outline_width_label": "縁取り幅",
@@ -213,10 +206,8 @@ I wrote a blog post explaining it [here](https://qiita.com/tropical-362827/items
         "meta_plane_type": "Plane type",
         "meta_light_influence": "Light influence",
         "meta_render_mode": "Render mode",
-        "meta_mesh_flatten_length": "Mesh segment length",
-        "meta_mesh_stop_quality": "Mesh stop_quality",
-        "meta_mesh_edge_length_r": "Mesh edge_length_r",
-        "meta_mesh_target_edge_len": "Mesh target_edge_len",
+        "meta_mesh_flatten_length": "Curve coarseness",
+        "meta_mesh_edge_length_r": "Triangle coarseness",
         "meta_mesh_outline_enabled": "Mesh outline",
         "meta_mesh_outline_width": "Mesh outline width",
         "meta_mesh_outline_color": "Mesh outline color",
@@ -253,15 +244,10 @@ I wrote a blog post explaining it [here](https://qiita.com/tropical-362827/items
         "render_mode_help": "Choose dot planes or triangulated mesh rendering.",
         "render_mode_dot": "Dots (Planes)",
         "render_mode_mesh": "Mesh (Triangles)",
-        "mesh_flatten_length_label": "Mesh segment length",
-        "mesh_flatten_length_help": "Smaller values split curves more finely but increase triangle count.",
-        "mesh_stop_quality_label": "Mesh quality threshold (stop_quality)",
-        "mesh_stop_quality_help": "Higher values stop earlier and are usually lighter; lower values tend to be heavier.",
-        "mesh_edge_length_r_label": "Mesh edge ratio (edge_length_r)",
-        "mesh_edge_length_r_help": "Higher values make coarser/lighter meshes; lower values make denser/heavier meshes.",
-        "mesh_target_edge_len_enable": "Use absolute edge length (target_edge_len)",
-        "mesh_target_edge_len_label": "Absolute edge length (target_edge_len)",
-        "mesh_target_edge_len_help": "Used only when enabled. Smaller values increase triangle count.",
+        "mesh_flatten_length_label": "Curve coarseness",
+        "mesh_flatten_length_help": "Higher values make curves coarser and reduce triangle count.",
+        "mesh_edge_length_r_label": "Triangle coarseness",
+        "mesh_edge_length_r_help": "Higher values create fewer triangles; lower values create finer triangles.",
         "mesh_outline_enable_label": "Enable outline",
         "mesh_outline_enable_help": "Adds an outline mesh behind the glyphs.",
         "mesh_outline_width_label": "Outline width",
@@ -352,7 +338,7 @@ class MeshRenderConfig:
     TRIWILD_EPSILON = -1.0
     TRIWILD_FEATURE_EPSILON = 1e-3
     TRIWILD_TARGET_EDGE_LEN = -1.0
-    TRIWILD_EDGE_LENGTH_R = 0.12
+    TRIWILD_EDGE_LENGTH_R = 0.8
     TRIWILD_FLAT_FEATURE_ANGLE = 10.0
     TRIWILD_CUT_OUTSIDE = True
     TRIWILD_SKIP_EPS = True
@@ -425,6 +411,24 @@ def compute_grid_width_from_image(img, grid_height):
 def build_preview_from_image(img, grid_width, grid_height):
     """元のPIL画像をプレビューサイズに縮小する。"""
     return resample_image(img, grid_width, grid_height)
+
+
+def build_scene_thumbnail_image(preview_pixels, width=1280, height=720):
+    """シーン埋め込み用に16:9のサムネイル画像を作る。"""
+    source = Image.fromarray(preview_pixels).convert("L")
+    if source.width <= 0 or source.height <= 0:
+        return Image.new("L", (width, height), color=0)
+
+    scale = min(width / source.width, height / source.height)
+    resized_width = max(1, int(round(source.width * scale)))
+    resized_height = max(1, int(round(source.height * scale)))
+    resized = source.resize((resized_width, resized_height), Image.Resampling.NEAREST)
+
+    canvas = Image.new("L", (width, height), color=0)
+    x = (width - resized_width) // 2
+    y = (height - resized_height) // 2
+    canvas.paste(resized, (x, y))
+    return canvas
 
 
 def render_preview(original_img, preview_pixels, grid_width, grid_height, lang="ja"):
@@ -3410,14 +3414,7 @@ class MeshRenderPipeline:
             "outline_enabled": False,
             "outline_width": float(MeshRenderConfig.OUTLINE_WIDTH_DEFAULT),
             "outline_color_hex": MeshRenderConfig.OUTLINE_COLOR_HEX_DEFAULT,
-            "stop_quality": float(MeshRenderConfig.TRIWILD_STOP_QUALITY),
             "edge_length_r": float(MeshRenderConfig.TRIWILD_EDGE_LENGTH_R),
-            "target_edge_len_enabled": MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN > 0.0,
-            "target_edge_len": (
-                float(MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN)
-                if MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN > 0.0
-                else 0.04
-            ),
         }
 
     @staticmethod
@@ -3453,48 +3450,21 @@ class MeshRenderPipeline:
         else:
             settings["outline_width"] = 0.0
             settings["outline_color_hex"] = MeshRenderConfig.OUTLINE_COLOR_HEX_DEFAULT
-        settings["stop_quality"] = st.slider(
-            get_text("mesh_stop_quality_label", lang),
-            min_value=1.0,
-            max_value=40.0,
-            value=float(MeshRenderConfig.TRIWILD_STOP_QUALITY),
-            step=1.0,
-            help=get_text("mesh_stop_quality_help", lang),
-        )
         settings["edge_length_r"] = st.slider(
             get_text("mesh_edge_length_r_label", lang),
-            min_value=0.02,
-            max_value=0.20,
+            min_value=0.10,
+            max_value=1.00,
             value=float(MeshRenderConfig.TRIWILD_EDGE_LENGTH_R),
-            step=0.01,
+            step=0.05,
             help=get_text("mesh_edge_length_r_help", lang),
         )
-        settings["target_edge_len_enabled"] = st.checkbox(
-            get_text("mesh_target_edge_len_enable", lang),
-            value=MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN > 0.0,
-        )
-        if settings["target_edge_len_enabled"]:
-            settings["target_edge_len"] = st.slider(
-                get_text("mesh_target_edge_len_label", lang),
-                min_value=0.005,
-                max_value=0.10,
-                value=(
-                    float(MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN)
-                    if MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN > 0.0
-                    else 0.04
-                ),
-                step=0.005,
-                help=get_text("mesh_target_edge_len_help", lang),
-            )
-        else:
-            settings["target_edge_len"] = -1.0
         return settings
 
     @staticmethod
-    def apply_triwild_settings(*, stop_quality, edge_length_r, target_edge_len):
-        MeshRenderConfig.TRIWILD_STOP_QUALITY = float(stop_quality)
+    def apply_triwild_settings(*, edge_length_r):
+        MeshRenderConfig.TRIWILD_STOP_QUALITY = 20.0
         MeshRenderConfig.TRIWILD_EDGE_LENGTH_R = float(edge_length_r)
-        MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN = float(target_edge_len)
+        MeshRenderConfig.TRIWILD_TARGET_EDGE_LEN = -1.0
 
     @staticmethod
     def build_generation_metadata(
@@ -3507,9 +3477,7 @@ class MeshRenderPipeline:
         plane_preset_key,
         light_cancel,
         flatten_segment_length,
-        stop_quality,
         edge_length_r,
-        target_edge_len,
         outline_enabled,
         outline_width,
         outline_color_hex,
@@ -3530,9 +3498,7 @@ class MeshRenderPipeline:
             get_text("meta_light_influence", lang): light_cancel,
             get_text("meta_render_mode", lang): get_text("render_mode_mesh", lang),
             get_text("meta_mesh_flatten_length", lang): flatten_segment_length,
-            get_text("meta_mesh_stop_quality", lang): stop_quality,
             get_text("meta_mesh_edge_length_r", lang): edge_length_r,
-            get_text("meta_mesh_target_edge_len", lang): target_edge_len,
             get_text("meta_mesh_outline_enabled", lang): (
                 "ON" if outline_enabled else "OFF"
             ),
@@ -3631,18 +3597,14 @@ class MeshRenderPipeline:
         color,
         selected_font,
         flatten_segment_length,
-        stop_quality,
         edge_length_r,
-        target_edge_len,
         outline_width,
         outline_color_hex,
         generation_metadata,
         lang,
     ):
         MeshRenderPipeline.apply_triwild_settings(
-            stop_quality=stop_quality,
             edge_length_r=edge_length_r,
-            target_edge_len=target_edge_len,
         )
         progress_callback = MeshRenderPipeline.build_progress_callback(lang)
         outline_color = hex_to_color(outline_color_hex)
@@ -3790,7 +3752,7 @@ def main():
         )
         st.caption(get_text("text_size_help", lang))
         with st.expander(get_text("text_size_example", lang), expanded=False):
-            st.markdown("![font size example](https://i.imgur.com/y04URY3.jpeg)")
+            st.markdown("![font size example](https://i.imgur.com/wbhZ8Gd.jpeg)")
 
         st.markdown("---")
 
@@ -3907,9 +3869,7 @@ def main():
                                     flatten_segment_length=mesh_settings[
                                         "flatten_segment_length"
                                     ],
-                                    stop_quality=mesh_settings["stop_quality"],
                                     edge_length_r=mesh_settings["edge_length_r"],
-                                    target_edge_len=mesh_settings["target_edge_len"],
                                     outline_enabled=mesh_settings["outline_enabled"],
                                     outline_width=mesh_settings["outline_width"],
                                     outline_color_hex=mesh_settings[
@@ -3939,9 +3899,7 @@ def main():
                                 flatten_segment_length=mesh_settings[
                                     "flatten_segment_length"
                                 ],
-                                stop_quality=mesh_settings["stop_quality"],
                                 edge_length_r=mesh_settings["edge_length_r"],
-                                target_edge_len=mesh_settings["target_edge_len"],
                                 outline_width=mesh_settings["outline_width"],
                                 outline_color_hex=mesh_settings["outline_color_hex"],
                                 generation_metadata=generation_metadata,
@@ -4019,7 +3977,9 @@ def main():
                     filename = build_scene_filename(text_input, render_mode_key)
 
                     preview_buf = io.BytesIO()
-                    Image.fromarray(preview_pixels).save(preview_buf, format="PNG")
+                    build_scene_thumbnail_image(preview_pixels).save(
+                        preview_buf, format="PNG"
+                    )
                     scene.image = preview_buf.getvalue()
 
                     scene_bytes = bytes(scene)

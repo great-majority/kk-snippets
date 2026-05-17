@@ -662,7 +662,7 @@ file = st.file_uploader(get_text("file_uploader", lang))
 if file is not None:
     try:
         kch = KoikatuCharaHeader.load(file.getvalue())
-    except Exception as e:
+    except Exception:
         st.error(get_text("error_load", lang), icon="🚨")
         # st.write(e)
         st.stop()

@@ -17,6 +17,7 @@ NAV_TITLES = {
         "dc_chara_converter": "デジクラキャラクター統一コンバータ",
         "dc_data_viewer": "デジクラシーンデータビューア",
         "dc_item_converter": "デジクラ基本形アイテム変換ツール",
+        "dc_svg_importer": "デジクラSVGビルダー",
         "chara_data_viewer": "illusion/ILLGAMESキャラ情報表示",
     },
     "en": {
@@ -33,6 +34,7 @@ NAV_TITLES = {
         "dc_chara_converter": "Digital Craft Character Converter",
         "dc_data_viewer": "Digital Craft Scene Data Viewer",
         "dc_item_converter": "Digital Craft Primitive Item Converter",
+        "dc_svg_importer": "Digital Craft SVG Builder",
         "chara_data_viewer": "illusion/ILLGAMES Character Data Viewer",
     },
 }
@@ -76,6 +78,7 @@ pg = st.navigation(
             st.Page(
                 "pages/digital-craft-item-converter.py", title=t["dc_item_converter"]
             ),
+            st.Page("pages/digital-craft-svg-importer.py", title=t["dc_svg_importer"]),
         ],
         t["sec_common"]: [
             st.Page("pages/chara-data-viewer.py", title=t["chara_data_viewer"]),
