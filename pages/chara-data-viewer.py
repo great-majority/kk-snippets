@@ -4,17 +4,10 @@ import tempfile
 import streamlit as st
 from kkloader import (
     AicomiCharaData as acd,
-)
-from kkloader import (
+    AmanatsuCharaData as alcd,
     EmocreCharaData as ecd,
-)
-from kkloader import (
     HoneycomeCharaData as hcd,
-)
-from kkloader import (
     KoikatuCharaData as kcd,
-)
-from kkloader import (
     SummerVacationCharaData as svcd,
 )
 from kkloader.funcs import get_png, load_length, load_type
@@ -37,6 +30,7 @@ illusion/ILLGAMESのキャラ画像に含まれている色々なデータを一
     - ハニカム
     - サマバケすくらんぶる
     - アイコミ
+    - 甘夏ろけーしょん
 """,
         "expander_title": "さらに詳しい説明を見る",
         "expander_content": """
@@ -55,7 +49,7 @@ illusion/ILLGAMESのキャラ画像に含まれている色々なデータを一
 | Gameinfo_*      | ゲーム中のステータス(隷属や好感など)が保存されています。                                       |
 | KKEx             | modの設定情報が格納される場所です。                                                            |
 """,
-        "file_uploader": "コイカツ/サマすく/ハニカムのキャラ画像を選択",
+        "file_uploader": "コイカツ/サマすく/ハニカム/あまろけのキャラ画像を選択",
         "error_load": "ファイルの読み込みに失敗しました。未対応のファイルです。",
         "error_corrupted_header": "ファイルのヘッダが破損しています。別のファイルを試してください。",
         "success_load": "正常にデータを読み込めました。",
@@ -78,6 +72,7 @@ Supported games:
     - Honey Come
     - Summer Vacation Scramble
     - Aicomi
+    - Amanatsu Location
 """,
         "expander_title": "Show more details",
         "expander_content": """
@@ -96,7 +91,7 @@ Please consider the following as a reference only.
 | Gameinfo_*      | In-game status (slavery, affection, etc.) is saved here.                                        |
 | KKEx             | Storage location for mod configuration data.                                                    |
 """,
-        "file_uploader": "Select a character image (Koikatsu/Summer Vacation/Honey Come)",
+        "file_uploader": "Select a character image (Koikatsu/Summer Vacation/Honey Come/Amanatsu Location)",
         "error_load": "Failed to load file. Unsupported file format.",
         "error_corrupted_header": "The file header is corrupted. Please try a different file.",
         "success_load": "Data loaded successfully.",
@@ -241,6 +236,16 @@ if file is not None:
                     io.BytesIO(chara.face_image),
                     caption=get_text("face_image_caption", lang),
                 )
+            name = " ".join(
+                [chara["Parameter"]["lastname"], chara["Parameter"]["firstname"]]
+            )
+
+        case "【ALChara】":
+            chara = alcd.load(file.getvalue())
+            st.image(
+                io.BytesIO(chara.image),
+                caption=get_text("card_image_caption", lang),
+            )
             name = " ".join(
                 [chara["Parameter"]["lastname"], chara["Parameter"]["firstname"]]
             )
