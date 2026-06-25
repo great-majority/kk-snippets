@@ -2,7 +2,7 @@
 
 [日本語マニュアルがここにあります！](README.ja.md)
 
-A repository for various tools related to Koikatsu and Honeycome games.
+A repository for various tools related to Koikatsu, Honeycome, and Amanatsu Location games.
 
 Access the tools here → https://kk-snippets.streamlit.app/
 
@@ -11,7 +11,7 @@ Access the tools here → https://kk-snippets.streamlit.app/
 ### illusion/ILLGAMES Character Data Viewer
 https://kk-snippets.streamlit.app/chara-data-viewer
 
-A tool for displaying character data from various illusion/ILLGAMES titles including Koikatsu/Koikatsu Sunshine, Emotion Creators, Honeycome, and Summer Vacation Scramble. You can view character images and detailed data, as well as export data in JSON format.
+A tool for displaying character data from various illusion/ILLGAMES titles including Koikatsu/Koikatsu Sunshine, Emotion Creators, Honeycome, Summer Vacation Scramble, Aicomi, and Amanatsu Location. You can view character images and detailed data, as well as export data in JSON format.
 
 ### Emotion Creators → Koikatsu Character Converter
 https://kk-snippets.streamlit.app/ec-to-kk
@@ -28,10 +28,10 @@ https://kk-snippets.streamlit.app/sv-chara-trait-editor
 
 A tool for editing character traits and attributes in Summer Vacation Scramble save data. You can freely modify job types, sexual orientation, personality, individual traits, H preferences, and more, then download the edited save data.
 
-### Summer Vacation Scramble / Honeycome Character Converter
+### Honeycome Series Character Converter
 https://kk-snippets.streamlit.app/sv-hc-converter
 
-A tool for bidirectional character conversion between Summer Vacation Scramble and Honeycome. It automatically detects the file format and converts it to the other format regardless of which type you upload.
+A tool for converting character data between Honey Come, Summer Vacation Scramble, and Aicomi. After loading character data, you can select a target title and convert.
 
 ### Summer Vacation Scramble Action Log Viewer
 https://kk-snippets.streamlit.app/sv-stat
