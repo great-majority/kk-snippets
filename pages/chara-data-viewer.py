@@ -1,3 +1,4 @@
+import hashlib
 import io
 import tempfile
 
@@ -58,6 +59,7 @@ illusion/ILLGAMESのキャラ画像に含まれている色々なデータを一
         "face_image_caption": "顔画像",
         "icon_image_caption": "アイコン画像",
         "download_json": "データをjsonとしてダウンロード",
+        "summarize_images": "画像データを要約表示する",
     },
     "en": {
         "title": "illusion/ILLGAMES Character Data Viewer",
@@ -100,6 +102,7 @@ Please consider the following as a reference only.
         "face_image_caption": "Face image",
         "icon_image_caption": "Icon image",
         "download_json": "Download data as JSON",
+        "summarize_images": "Summarize image data",
     },
 }
 
@@ -107,6 +110,32 @@ Please consider the following as a reference only.
 def get_text(key, lang="ja"):
     """指定した言語のテキストを取得"""
     return TRANSLATIONS.get(lang, TRANSLATIONS["ja"]).get(key, key)
+
+
+IMAGE_SIGNATURES = {
+    b"\x89PNG\r\n\x1a\n": "PNG",
+    b"\xff\xd8\xff": "JPEG",
+}
+
+
+def _detect_image_format(data: bytes) -> str | None:
+    for sig, fmt in IMAGE_SIGNATURES.items():
+        if data[: len(sig)] == sig:
+            return fmt
+    return None
+
+
+def _summarize_bytes(obj):
+    if isinstance(obj, dict):
+        return {k: _summarize_bytes(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_summarize_bytes(v) for v in obj]
+    if isinstance(obj, bytes):
+        fmt = _detect_image_format(obj)
+        if fmt:
+            md5 = hashlib.md5(obj).hexdigest()
+            return f"[{fmt} image, {len(obj):,} bytes, md5:{md5}]"
+    return obj
 
 
 # ヘッダ部分だけ読み込むクラス
@@ -265,6 +294,14 @@ if file is not None:
         mime="application/json",
     )
 
+    summarize = st.checkbox(
+        get_text("summarize_images", lang),
+        value=True,
+    )
+
     tabs = st.tabs(chara.blockdata)
     for b, t in zip(chara.blockdata, tabs):
-        t.json(chara[b].jsonalizable(), expanded=1)
+        data = chara[b].jsonalizable()
+        if summarize:
+            data = _summarize_bytes(data)
+        t.json(data, expanded=1)

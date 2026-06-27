@@ -19,6 +19,9 @@ dependencies = [
     "msgpack==1.1.2",
 ]
 
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
 [dependency-groups]
 dev = [
     "ruff>=0.15.9",
