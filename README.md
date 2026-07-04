@@ -38,6 +38,11 @@ https://kk-snippets.streamlit.app/sv-stat
 
 A tool for analyzing and displaying relationship data and action history between characters from Summer Vacation Scramble save data. It visualizes character interaction matrices, emotion values, and relationships in network graphs to provide detailed analysis of in-game interpersonal relationships.
 
+### Aicomi Save Data Editor
+https://kk-snippets.streamlit.app/aicomi-save-editor
+
+A tool for editing character parameters in Aicomi save data. You can individually edit favor, relation (acquaintance to girlfriend), lewdness, sexual experience, virgin flag, date count, and per-part development values, or use bulk buttons to max out each parameter for all characters at once. You can also download the character cards embedded in the save data as PNG files.
+
 ### Digital Craft Calligrapher
 https://kk-snippets.streamlit.app/digital-craft-calligrapher
 

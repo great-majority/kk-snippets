@@ -18,6 +18,7 @@ NAV_TITLES = {
         "dc_data_viewer": "デジクラシーンデータビューア",
         "dc_item_converter": "デジクラ基本形アイテム変換ツール",
         "dc_svg_importer": "デジクラSVGビルダー",
+        "ac_save_editor": "アイコミセーブデータエディター",
         "chara_data_viewer": "illusion/ILLGAMESキャラ情報表示",
     },
     "en": {
@@ -35,6 +36,7 @@ NAV_TITLES = {
         "dc_data_viewer": "Digital Craft Scene Data Viewer",
         "dc_item_converter": "Digital Craft Primitive Item Converter",
         "dc_svg_importer": "Digital Craft SVG Builder",
+        "ac_save_editor": "Aicomi Save Data Editor",
         "chara_data_viewer": "illusion/ILLGAMES Character Data Viewer",
     },
 }
@@ -67,6 +69,7 @@ pg = st.navigation(
             st.Page("pages/sv-hc-converter.py", title=t["sv_hc_converter"]),
             st.Page("pages/sv-chara-trait-editor.py", title=t["sv_chara_trait_editor"]),
             st.Page("pages/sv-stat.py", title=t["sv_stat"]),
+            st.Page("pages/aicomi-save-editor.py", title=t["ac_save_editor"]),
         ],
         t["sec_digcraft"]: [
             st.Page("pages/digital-craft-calligrapher.py", title=t["dc_calligrapher"]),
