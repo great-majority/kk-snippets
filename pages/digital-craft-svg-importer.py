@@ -11,8 +11,15 @@ import wildmeshing as wildmeshing_lib
 from kkloader import HoneycomeSceneData
 from PIL import Image, ImageDraw
 from scipy.optimize import least_squares
-from svgelements import SVG, Arc, Close, CubicBezier, Move, QuadraticBezier
-from svgelements import Path as SVGPath
+from svgelements import (
+    SVG,
+    Arc,
+    Close,
+    CubicBezier,
+    Move,
+    Path as SVGPath,
+    QuadraticBezier,
+)
 
 DEG2RAD = math.pi / 180.0
 
