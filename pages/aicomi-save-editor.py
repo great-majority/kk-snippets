@@ -18,6 +18,14 @@ TRANSLATIONS = {
 
 **⚠️注意事項**: バグなどあるかもしれませんので、編集前のデータのバックアップはとっておきましょう!
 """,
+        "usage_header": "使い方",
+        "usage": """
+1. アイコミのセーブフォルダ (`Aicomi/UserData/save/user`) にある目的のセーブデータ (例: `000.sav`) を上のアップローダーから読み込ませる
+2. MAX系のボタンを押すなどしてパラメータを編集し、表示上で値が変わっていることを確認する
+3. 「改変後のセーブデータをダウンロード」ボタンを押してファイルを保存する
+4. ダウンロードしたファイル名の `modified_` 部分を削除し、元のセーブフォルダに戻す（上書きしたくない場合は別の連番にリネームしてください）
+5. ゲームを起動して反映を確認する
+""",
         "file_uploader": "アイコミのセーブデータ (.sav) を選択",
         "error_load": "ファイルの読み込みに失敗しました。未対応のファイルです。",
         "success_load": "正常にデータを読み込めました。",
@@ -60,6 +68,14 @@ A tool to load [Aicomi](https://www.illgames.jp/product/aicomi/) save data and e
 Select a character, change values, then download the save data from the button below.
 
 **⚠️Caution**: There may be bugs, so please back up your data before editing!
+""",
+        "usage_header": "How to use",
+        "usage": """
+1. Load your target save data (e.g. `000.sav`) from the Aicomi save folder (`Aicomi/UserData/save/user`) using the uploader above
+2. Edit parameters by pressing MAX buttons or adjusting values manually, and confirm the displayed values have changed
+3. Press "Download modified save data" to save the file
+4. Remove the `modified_` prefix from the downloaded filename and place it back in the save folder (rename to a different number if you don't want to overwrite)
+5. Launch the game and verify the changes
 """,
         "file_uploader": "Select Aicomi save data (.sav)",
         "error_load": "Failed to load file. Unsupported file format.",
@@ -288,6 +304,9 @@ st.title(get_text("title", lang))
 st.divider()
 
 st.markdown(get_text("description", lang))
+
+with st.expander(get_text("usage_header", lang)):
+    st.markdown(get_text("usage", lang))
 
 file = st.file_uploader(get_text("file_uploader", lang))
 if file is not None:
