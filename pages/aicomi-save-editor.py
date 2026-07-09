@@ -20,8 +20,8 @@ TRANSLATIONS = {
 """,
         "usage_header": "使い方",
         "usage": """
-1. アイコミのセーブフォルダ (`Aicomi/UserData/save/user`) にある目的のセーブデータ (例: `000.sav`) を上のアップローダーから読み込ませる
-2. MAX系のボタンを押すなどしてパラメータを編集し、表示上で値が変わっていることを確認する
+1. アイコミのセーブフォルダ (`Aicomi/UserData/save/user`) にある目的のセーブデータ (例: `000.sav`) を下のアップローダーから読み込ませる
+2. パラメータを編集し、表示上で値が変わっていることを確認する
 3. 「改変後のセーブデータをダウンロード」ボタンを押してファイルを保存する
 4. ダウンロードしたファイル名の `modified_` 部分を削除し、元のセーブフォルダに戻す（上書きしたくない場合は別の連番にリネームしてください）
 5. ゲームを起動して反映を確認する
@@ -71,8 +71,8 @@ Select a character, change values, then download the save data from the button b
 """,
         "usage_header": "How to use",
         "usage": """
-1. Load your target save data (e.g. `000.sav`) from the Aicomi save folder (`Aicomi/UserData/save/user`) using the uploader above
-2. Edit parameters by pressing MAX buttons or adjusting values manually, and confirm the displayed values have changed
+1. Load your target save data (e.g. `000.sav`) from the Aicomi save folder (`Aicomi/UserData/save/user`) using the uploader below
+2. Edit parameters and confirm the displayed values have changed
 3. Press "Download modified save data" to save the file
 4. Remove the `modified_` prefix from the downloaded filename and place it back in the save folder (rename to a different number if you don't want to overwrite)
 5. Launch the game and verify the changes
