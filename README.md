@@ -43,6 +43,11 @@ https://kk-snippets.streamlit.app/aicomi-save-editor
 
 A tool for editing character parameters in Aicomi save data. You can individually edit favor, relation (acquaintance to girlfriend), lewdness, sexual experience, virgin flag, date count, and per-part development values, or use bulk buttons to max out each parameter for all characters at once. You can also download the character cards embedded in the save data as PNG files.
 
+### Amanatsu Location Save Data Editor
+https://kk-snippets.streamlit.app/amanatsu-save-editor
+
+A tool for editing NPC intimacy, inclusiveness, proactivity, and curiosity in Amanatsu Location save data. Each parameter can be edited or maxed individually, and all parameters can be maxed for one or every NPC. Embedded character cards can also be downloaded as PNG files.
+
 ### Digital Craft Calligrapher
 https://kk-snippets.streamlit.app/digital-craft-calligrapher
 

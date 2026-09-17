@@ -7,6 +7,7 @@ NAV_TITLES = {
         "home": "ホーム",
         "sec_koikatsu": "コイカツ関連",
         "sec_honeycomb": "ハニカム関連",
+        "sec_amanatsu": "あまろけ関連",
         "sec_digcraft": "デジクラ関連",
         "sec_common": "共通ツール",
         "ec_to_kk": "コイカツシリーズキャラクター変換ツール",
@@ -19,12 +20,14 @@ NAV_TITLES = {
         "dc_item_converter": "デジクラ基本形アイテム変換ツール",
         "dc_svg_importer": "デジクラSVGビルダー",
         "ac_save_editor": "アイコミセーブデータエディター",
+        "al_save_editor": "甘夏ろけーしょんセーブデータエディター",
         "chara_data_viewer": "illusion/ILLGAMESキャラ情報表示",
     },
     "en": {
         "home": "Home",
         "sec_koikatsu": "Koikatsu",
         "sec_honeycomb": "Honeycome",
+        "sec_amanatsu": "Amanatsu Location",
         "sec_digcraft": "Digital Craft",
         "sec_common": "Common Tools",
         "ec_to_kk": "Koikatsu Character Data Converter",
@@ -37,6 +40,7 @@ NAV_TITLES = {
         "dc_item_converter": "Digital Craft Primitive Item Converter",
         "dc_svg_importer": "Digital Craft SVG Builder",
         "ac_save_editor": "Aicomi Save Data Editor",
+        "al_save_editor": "Amanatsu Location Save Data Editor",
         "chara_data_viewer": "illusion/ILLGAMES Character Data Viewer",
     },
 }
@@ -70,6 +74,9 @@ pg = st.navigation(
             st.Page("pages/sv-chara-trait-editor.py", title=t["sv_chara_trait_editor"]),
             st.Page("pages/sv-stat.py", title=t["sv_stat"]),
             st.Page("pages/aicomi-save-editor.py", title=t["ac_save_editor"]),
+        ],
+        t["sec_amanatsu"]: [
+            st.Page("pages/amanatsu-save-editor.py", title=t["al_save_editor"]),
         ],
         t["sec_digcraft"]: [
             st.Page("pages/digital-craft-calligrapher.py", title=t["dc_calligrapher"]),
