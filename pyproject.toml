@@ -16,7 +16,7 @@ dependencies = [
     "pandas==2.3.3",
     "pillow==12.2.0",
     "msgpack==1.1.2",
-    "kkloader[pandas]==0.1.22",
+    "kkloader[pandas]==0.1.24",
 ]
 
 [tool.ruff.lint.isort]
