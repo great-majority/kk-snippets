@@ -1,8 +1,8 @@
 # kk-snippets
 
-[日本語マニュアルがここにあります！](README.ja.md)
+A Streamlit application with various tools for working with illusion/ILLGAMES game data.
 
-A repository for various tools related to Koikatsu, Honeycome, and Amanatsu Location games.
+[日本語マニュアルがここにあります！](README.ja.md)
 
 Access the tools here → https://kk-snippets.streamlit.app/
 
